@@ -1,7 +1,7 @@
 --Creación de entidades
-create type estado_factura as enum('pagada', 'pendiente', 'en proceso');
-create type tipo_informe as enum('mensual', 'semanal', 'diario', 'anual', 'personalizado');
-create type tipo_pago as enum('efectivo', 'tarjeta');
+create type estado_factura as enum('PAGADA', 'PENDIENTE', 'ANULADA');
+create type tipo_informe as enum('USUARIOS', 'INVENTARIO', 'VENTAS');
+
 
 
 create sequence usuarioSecuencia
@@ -16,7 +16,7 @@ no maxvalue;
 
 create sequence productoSecuencia
 start with 1
-increment by 1
+increment by 1 
 no maxvalue;
 
 create sequence inventarioSecuencia
@@ -54,10 +54,6 @@ start with 1
 increment by 1
 no maxvalue;
 
-create sequence auditoriaSecuencia
-start with 1
-increment by 1
-no maxvalue;
 
 
 
@@ -66,7 +62,7 @@ create table usuarios (
     numero_documento varchar(15) unique not null,
     nombre varchar(50) not null,
     contrasenia varchar(50) not null,
-    email varchar(100) not null,
+    email varchar(100) unique not null,
     celular varchar(20),
     puntos int,
 	rol int
@@ -92,22 +88,22 @@ create table inventarios(
 	id int primary key default nextval('inventarioSecuencia'),
 	cantidad_disponible int,
 	referencia_compra varchar(30) unique not null,
-	producto_id int references producto(id)
+	producto_id int references productos(id)
+);
+
+create table carritos(
+	id int primary key default nextval('carritoSecuencia'),
+	cantidad int,
+	total numeric
 );
 
 
 create table ventas(
 	id int primary key default nextval('ventaSecuencia'),
-	carrito_id int references carrito(id),
-	producto_id int references producto(id)
+	carrito_id int references carritos(id),
+	producto_id int references productos(id)
 );
 
-
-create table carritos(
-	id int primary key default nextval('carritoSecuencia'),
-	cantidad int ,
-	total numeric,
-);
 
 
 create table facturas(
@@ -118,15 +114,15 @@ create table facturas(
 	total int,
 	impuesto int,
 	estado estado_factura,
-	cliente_id int references ususario(id),
-	carrito_id int references carrito(id)
+	cliente_id int references usuarios(id),
+	carrito_id int references carritos(id)
 );
 
 create table puntos_redimidos(
 	id int primary key default nextval('puntosRedimidosSecuencia'),
 	cantidad int,
 	fecha_redencion date,
-	usuario_id int references usuario(id)
+	usuario_id int references usuarios(id)
 );
 
 create table puntos_ganados(
@@ -135,7 +131,7 @@ create table puntos_ganados(
 	fecha_ganacia date,
 	motivo varchar(50) not null,
 	referencia varchar(20),
-	usuario_id int references usuario(id)
+	usuario_id int references usuarios(id)
 );
 
 
@@ -147,14 +143,7 @@ create table informes (
 );
 
 
-create table documentos_auditoria (
-    id int primary key default nextval('audotiraSecuencia'),
-    fecha date not null,
-    cantidad int not null,
-    total numeric not null,
-    producto_id int references productos(id),
-    cliente_id int references clientes(id)
-);
+
 
 ----------------------------------------------------Funcionalidades----------------------------------------------------
 -----------------------------------1. Usuarios-----------------------------------
@@ -172,18 +161,18 @@ CREATE OR REPLACE PROCEDURE crear_usuario(
 LANGUAGE plpgsql AS $$
 BEGIN
     IF EXISTS (
-        SELECT 1 FROM usuario WHERE numero_documento = numero_documento_input
+        SELECT 1 FROM usuarios WHERE numero_documento = numero_documento_input
     ) THEN
         RAISE EXCEPTION 'Error: El número de documento % ya está registrado.', numero_documento_input;
     END IF;
 
     IF EXISTS (
-        SELECT 1 FROM usuario WHERE email = email_input
+        SELECT 1 FROM usuarios WHERE email = email_input
     ) THEN
         RAISE EXCEPTION 'Error: El correo electrónico % ya está registrado.', email_input;
     END IF;
 
-    INSERT INTO usuario (
+    INSERT INTO usuarios (
         numero_documento, nombre, contrasenia, email, celular, puntos
     ) VALUES (
         numero_documento_input, nombre_input, contrasenia_input, email_input, celular_input, puntos_input
@@ -195,21 +184,21 @@ $$;
 
 ----------Crear usuario----------
 
-CREATE OR REPLACE FUNCTION login_usuario(numero_documento_input VARCHAR, contrasenia_input VARCHAR)
+CREATE OR REPLACE FUNCTION login_usuario(email_input VARCHAR, contrasenia_input VARCHAR)
 RETURNS TEXT AS $$
 DECLARE
     contrasenia_actual VARCHAR;
 BEGIN
     SELECT contrasenia INTO contrasenia_actual
-    FROM usuario
-    WHERE numero_documento = numero_documento_input;
+    FROM usuarios
+    WHERE email = email_input;
 
     IF contrasenia_actual IS NULL THEN
-        RETURN 'El usuario no existe.';
+        RETURN 'El usuario no existe';
     ELSIF contrasenia_actual = contrasenia_input THEN
-        RETURN 'Login exitoso.';
+        RETURN 'Login exitoso';
     ELSE
-        RETURN 'Contraseña incorrecta.';
+        RETURN 'Contraseña incorrecta';
     END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -438,6 +427,11 @@ INSERT INTO categorias (nombre) VALUES
 ('Salud'),
 ('Automóviles');
 
+drop table usuarios;
+drop table facturas;
+drop table puntos_redimidos ;
+drop table puntos_ganados ;
+
 INSERT INTO productos (nombre, descripcion, precio, imagen, descuento, categoria_id) VALUES
 ('Smartphone', 'Teléfono de última generación', 700, 'img1.jpg', 10, 1),
 ('Laptop', 'Computadora portátil', 1200, 'img2.jpg', 15, 1),
@@ -534,14 +528,19 @@ INSERT INTO informes (tipo, fecha, datos_json) VALUES
 ('USUARIOS', '2024-11-09', '{"nuevos_usuarios": 4, "total_usuarios": 17}'),
 ('VENTAS', '2024-11-10', '{"ventas_totales": 110, "productos_vendidos": 5}');
 
-INSERT INTO documentos_auditoria (fecha, cantidad, total, producto_id, cliente_id) VALUES
-('2024-11-01', 1, 770, 1, 1),
-('2024-11-02', 2, 1540, 2, 2),
-('2024-11-03', 3, 550, 3, 3),
-('2024-11-04', 4, 990, 4, 4),
-('2024-11-05', 1, 44, 5, 5),
-('2024-11-06', 6, 66, 6, 6),
-('2024-11-07', 2, 66, 7, 7),
-('2024-11-08', 6, 79, 8, 8),
-('2024-11-09', 1, 22, 9, 9),
-('2024-11-10', 5, 110, 10, 10);
+
+CALL crear_usuario(
+    '5544332211', 
+    'Pedro Ramirez', 
+    'password10', 
+    'pedro.ramirez@gmail.com', 
+    '3045544332', 
+    25
+);
+
+select login_usuario(
+	'pedro.ramirez@gmail.com',
+	'password10'
+);
+
+
