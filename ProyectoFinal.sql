@@ -1,7 +1,7 @@
 --Creación de entidades
 create type estado_factura as enum('PAGADA', 'PENDIENTE', 'ANULADA');
 create type tipo_informe as enum('USUARIOS', 'INVENTARIO', 'VENTAS');
-
+CREATE EXTENSION IF NOT EXISTS xml2;
 
 
 create sequence usuarioSecuencia
@@ -54,8 +54,20 @@ start with 1
 increment by 1
 no maxvalue;
 
+create sequence descuentoDia
+start with 1
+increment by 1
+no maxvalue;
 
+create sequence historialPuntos
+start with 1
+increment by 1
+no maxvalue;
 
+create sequence historialCompras
+start with 1
+increment by 1
+no maxvalue;
 
 create table usuarios (
     id int primary key default nextval('usuarioSecuencia'), 
@@ -142,13 +154,36 @@ create table informes (
     datos_json json not null
 );
 
+CREATE TABLE descuentos_dia (
+    id int primary key default nextval('descuentoDia'),
+    producto_id INT REFERENCES producto(id),
+    fecha_inicio DATE NOT NULL,
+    fecha_fin DATE NOT NULL,
+    descuento_porcentaje INT NOT NULL CHECK (descuento_porcentaje >= 0 AND descuento_porcentaje <= 100)
+);
 
+CREATE TABLE historial_puntos (
+    id int primary key default nextval('historialPuntos'),
+    usuario_id INT NOT NULL REFERENCES usuarios(id),
+    cantidad INT NOT NULL,
+    fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+    motivo VARCHAR(100) NOT NULL,
+    venta_id INT REFERENCES ventas(id)
+);
 
-
+CREATE TABLE historial_compras (
+    id int primary key default nextval('historialCompras'),
+    cliente_id INT NOT NULL REFERENCES usuarios(id),
+    fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+    total_efectivo NUMERIC NOT NULL,
+    puntos_redimidos INT,
+    carrito_id INT NOT NULL REFERENCES carritos(id),
+    factura_id INT NOT NULL REFERENCES facturas(id)
+);
 ----------------------------------------------------Funcionalidades----------------------------------------------------
------------------------------------1. Usuarios-----------------------------------
+----------------------------------- Usuarios -----------------------------------
 
-----------Login----------
+----------Crear usuario----------
 
 CREATE OR REPLACE PROCEDURE crear_usuario(
     numero_documento_input VARCHAR,
@@ -156,7 +191,8 @@ CREATE OR REPLACE PROCEDURE crear_usuario(
     contrasenia_input VARCHAR,
     email_input VARCHAR,
     celular_input VARCHAR,
-    puntos_input INT DEFAULT 0
+    puntos_input INT DEFAULT 0,
+    rol_input int 
 )
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -173,16 +209,16 @@ BEGIN
     END IF;
 
     INSERT INTO usuarios (
-        numero_documento, nombre, contrasenia, email, celular, puntos
+        numero_documento, nombre, contrasenia, email, celular, puntos, rol
     ) VALUES (
-        numero_documento_input, nombre_input, contrasenia_input, email_input, celular_input, puntos_input
+        numero_documento_input, nombre_input, contrasenia_input, email_input, celular_input, puntos_input, rol_input
     );
 
     RAISE NOTICE 'Usuario creado exitosamente: %', nombre_input;
 END;
 $$;
 
-----------Crear usuario----------
+----------Login----------
 
 CREATE OR REPLACE FUNCTION login_usuario(email_input VARCHAR, contrasenia_input VARCHAR)
 RETURNS TEXT AS $$
@@ -212,7 +248,8 @@ CREATE OR REPLACE PROCEDURE modificar_usuario(
     contrasenia_input VARCHAR,
     email_input VARCHAR,
     celular_input VARCHAR,
-    puntos_input INT
+    puntos_input INT,
+    rol_input int
 )
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -243,7 +280,8 @@ BEGIN
         contrasenia = contrasenia_input,
         email = email_input,
         celular = celular_input,
-        puntos = puntos_input
+        puntos = puntos_input,
+        rol = rol_input	
     WHERE id = usuario_id_input;
 
     RAISE NOTICE 'Usuario con ID % modificado exitosamente.', usuario_id_input;
@@ -268,9 +306,31 @@ BEGIN
 END;
 $$;
 
+----------Obtener todos los usuarios----------
+
+CREATE OR REPLACE PROCEDURE obtener_todos_los_usuarios()
+LANGUAGE plpgsql AS $$
+DECLARE
+    usuario_record RECORD;
+BEGIN
+    FOR usuario_record IN 
+        SELECT id, numero_documento, nombre, email, celular, puntos
+        FROM usuario
+    LOOP
+        RAISE NOTICE 'ID: %, Documento: %, Nombre: %, Email: %, Celular: %, Puntos: %',
+            usuario_record.id,
+            usuario_record.numero_documento,
+            usuario_record.nombre,
+            usuario_record.email,
+            usuario_record.celular,
+            usuario_record.puntos;
+    END LOOP;
+END;
+$$;
 
 
------------------------------------2. Productos-----------------------------------
+
+----------------------------------- Productos -----------------------------------
 
 ----------Crear producto----------
 
@@ -363,6 +423,29 @@ BEGIN
 END;
 $$;
 
+----------Obtener todos los productos----------
+
+CREATE OR REPLACE PROCEDURE obtener_todos_los_productos()
+LANGUAGE plpgsql AS $$
+DECLARE
+    producto_record RECORD;
+BEGIN
+    FOR producto_record IN 
+        SELECT id, nombre, descripcion, precio, imagen, descuento, categoria_id
+        FROM producto
+    LOOP
+        RAISE NOTICE 'ID: %, Nombre: %, Descripción: %, Precio: %, Imagen: %, Descuento: %, Categoría ID: %',
+            producto_record.id,
+            producto_record.nombre,
+            producto_record.descripcion,
+            producto_record.precio,
+            producto_record.imagen,
+            producto_record.descuento,
+            producto_record.categoria_id;
+    END LOOP;
+END;
+$$;
+
 ----------Categorización de productos----------
 
 CREATE OR REPLACE FUNCTION filtrar_productos(
@@ -397,10 +480,462 @@ $$ LANGUAGE plpgsql;
 
 
 
+----------Agregar un descuento a un producto----------
+
+CREATE OR REPLACE PROCEDURE agregar_descuento_dia(
+    producto_id_input INT,
+    fecha_inicio_input DATE,
+    fecha_fin_input DATE,
+    descuento_porcentaje_input INT
+)
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM producto WHERE id = producto_id_input
+    ) THEN
+        RAISE EXCEPTION 'Error: El producto con ID % no existe.', producto_id_input;
+    END IF;
+
+    IF fecha_inicio_input > fecha_fin_input THEN
+        RAISE EXCEPTION 'Error: La fecha de inicio no puede ser mayor que la fecha de fin.';
+    END IF;
+
+    INSERT INTO descuento_dia (producto_id, fecha_inicio, fecha_fin, descuento_porcentaje)
+    VALUES (producto_id_input, fecha_inicio_input, fecha_fin_input, descuento_porcentaje_input);
+
+    RAISE NOTICE 'Descuento del % % agregado para el producto con ID % entre % y %.',
+        descuento_porcentaje_input, '%', producto_id_input, fecha_inicio_input, fecha_fin_input;
+END;
+$$;
+
+
+----------Productos que tengan descuento x fecha----------
+
+CREATE OR REPLACE FUNCTION obtener_productos_descuento(fecha_actual DATE)
+RETURNS TABLE(
+    id INT,
+    nombre VARCHAR,
+    descripcion VARCHAR,
+    precio_original NUMERIC,
+    precio_descuento NUMERIC,
+    descuento_aplicado INT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        p.id,
+        p.nombre,
+        p.descripcion,
+        p.precio AS precio_original,
+        p.precio - (p.precio * d.descuento_porcentaje / 100) AS precio_descuento,
+        d.descuento_porcentaje AS descuento_aplicado
+    FROM producto p
+    JOIN descuento_dia d ON p.id = d.producto_id
+    WHERE fecha_actual BETWEEN d.fecha_inicio AND d.fecha_fin;
+END;
+$$ LANGUAGE plpgsql;
+
+----------Productos más vendidos----------
+
+CREATE OR REPLACE FUNCTION obtener_productos_mas_vendidos()
+RETURNS TABLE(
+    producto_id INT,
+    nombre VARCHAR,
+    cantidad_vendida INT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        p.id AS producto_id,
+        p.nombre,
+        COUNT(v.producto_id) AS cantidad_vendida
+    FROM 
+        producto p
+    JOIN 
+        venta v ON p.id = v.producto_id
+    GROUP BY 
+        p.id, p.nombre
+    ORDER BY 
+        cantidad_vendida DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+----------------------------------- Venta -----------------------------------
+
+----------Crear venta----------
+
+CREATE OR REPLACE PROCEDURE crear_venta(
+    p_carrito_id INT,
+    p_producto_id INT
+)
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM carrito WHERE id = p_carrito_id) THEN
+        RAISE EXCEPTION 'El carrito con ID % no existe.', p_carrito_id;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM producto WHERE id = p_producto_id) THEN
+        RAISE EXCEPTION 'El producto con ID % no existe.', p_producto_id;
+    END IF;
+
+    INSERT INTO venta (carrito_id, producto_id)
+    VALUES (p_carrito_id, p_producto_id);
+END;
+$$;
+
+
+----------Actualizar una venta----------
+
+CREATE OR REPLACE PROCEDURE actualizar_venta(
+    p_venta_id INT,
+    p_carrito_id INT,
+    p_producto_id INT
+)
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM venta WHERE id = p_venta_id) THEN
+        RAISE EXCEPTION 'La venta con ID % no existe.', p_venta_id;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM carrito WHERE id = p_carrito_id) THEN
+        RAISE EXCEPTION 'El carrito con ID % no existe.', p_carrito_id;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM producto WHERE id = p_producto_id) THEN
+        RAISE EXCEPTION 'El producto con ID % no existe.', p_producto_id;
+    END IF;
+
+    UPDATE venta
+    SET carrito_id = p_carrito_id,
+        producto_id = p_producto_id
+    WHERE id = p_venta_id;
+END;
+$$;
+
+
+----------Eliminar una venta----------
+
+CREATE OR REPLACE PROCEDURE eliminar_venta(
+    p_venta_id INT
+)
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM venta WHERE id = p_venta_id) THEN
+        RAISE EXCEPTION 'La venta con ID % no existe.', p_venta_id;
+    END IF;
+
+    DELETE FROM venta WHERE id = p_venta_id;
+END;
+$$;
+
+----------Obtener ventas----------
+
+CREATE OR REPLACE FUNCTION listar_ventas(p_carrito_id INT DEFAULT NULL)
+RETURNS TABLE(
+    venta_id INT,
+    carrito_id INT,
+    producto_id INT,
+    producto_nombre VARCHAR
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        v.id AS venta_id,
+        v.carrito_id,
+        v.producto_id,
+        p.nombre AS producto_nombre
+    FROM 
+        venta v
+    JOIN 
+        producto p ON v.producto_id = p.id
+    WHERE 
+        p_carrito_id IS NULL OR v.carrito_id = p_carrito_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+----------Crear una factura en el momento en que se haga una venta----------
+
+CREATE OR REPLACE FUNCTION generar_factura_venta()
+RETURNS TRIGGER AS $$
+DECLARE
+    nuevo_carrito RECORD;
+    subtotal NUMERIC;
+    impuesto NUMERIC;
+    total NUMERIC;
+BEGIN
+    SELECT * INTO nuevo_carrito 
+    FROM carrito 
+    WHERE id = NEW.carrito_id;
+
+    IF nuevo_carrito IS NULL THEN
+        RAISE EXCEPTION 'Carrito asociado a la venta no encontrado.';
+    END IF;
+
+    subtotal := nuevo_carrito.total;
+    impuesto := subtotal * 0.19; 
+    total := subtotal + impuesto;
+
+    INSERT INTO factura (
+        codigo, 
+        fecha, 
+        subtotal, 
+        total, 
+        impuesto, 
+        estado, 
+        cliente_id, 
+        carrito_id
+    ) VALUES (
+        CONCAT('FAC-', nextval('facturaSecuencia')),
+        CURRENT_DATE,
+        subtotal,
+        total,
+        impuesto,
+        'pendiente',
+        (SELECT cliente_id FROM carrito WHERE id = NEW.carrito_id), 
+        NEW.carrito_id
+    );
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+----------------------------------- Carrito -----------------------------------
+
+----------Agregar producto al carrito----------
+
+CREATE OR REPLACE PROCEDURE agregar_producto_al_carrito(
+    p_usuario_id INT,
+    p_producto_id INT,
+    p_cantidad INT
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_carrito_id INT;
+    v_producto_en_carrito INT;
+BEGIN
+    SELECT id INTO v_carrito_id
+    FROM carritos
+    WHERE id = p_usuario_id AND carrito_id IS NULL; 
+
+    IF NOT FOUND THEN
+        INSERT INTO carritos (usuario_id, cantidad, total)
+        VALUES (p_usuario_id, 0, 0)
+        RETURNING id INTO v_carrito_id;
+    END IF;
+
+    SELECT COUNT(*) INTO v_producto_en_carrito
+    FROM ventas
+    WHERE carrito_id = v_carrito_id
+    AND producto_id = p_producto_id;
+
+    IF v_producto_en_carrito > 0 THEN
+        UPDATE ventas
+        SET cantidad = cantidad + p_cantidad
+        WHERE carrito_id = v_carrito_id
+        AND producto_id = p_producto_id;
+    ELSE
+        INSERT INTO ventas (carrito_id, producto_id, cantidad)
+        VALUES (v_carrito_id, p_producto_id, p_cantidad);
+    END IF;
+
+    UPDATE carritos
+    SET total = (SELECT SUM(p.precio * v.cantidad) FROM ventas v
+                 JOIN productos p ON v.producto_id = p.id
+                 WHERE v.carrito_id = v_carrito_id)
+    WHERE id = v_carrito_id;
+    
+    COMMIT;
+END;
+$$;
+
+----------Eliminar producto del carrito----------
+
+CREATE OR REPLACE PROCEDURE eliminar_producto_del_carrito(
+    p_carrito_id INT,
+    p_producto_id INT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    DELETE FROM ventas
+    WHERE carrito_id = p_carrito_id
+    AND producto_id = p_producto_id;
+
+    UPDATE carritos
+    SET total = (SELECT SUM(p.precio * v.cantidad) FROM ventas v
+                 JOIN productos p ON v.producto_id = p.id
+                 WHERE v.carrito_id = p_carrito_id)
+    WHERE id = p_carrito_id;
+    
+    COMMIT;
+END;
+$$;
+
+----------Ver productos del carrito----------
+
+CREATE OR REPLACE FUNCTION obtener_productos_carrito(
+    p_carrito_id INT
+)
+RETURNS TABLE(producto_nombre VARCHAR, cantidad INT, total_producto NUMERIC) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT p.nombre, v.cantidad, p.precio * v.cantidad
+    FROM ventas v
+    JOIN productos p ON v.producto_id = p.id
+    WHERE v.carrito_id = p_carrito_id;
+END;
+$$ LANGUAGE plpgsql;
+
+----------Vaciar carrito----------
+
+CREATE OR REPLACE PROCEDURE vaciar_carrito(
+    p_carrito_id INT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    DELETE FROM ventas WHERE carrito_id = p_carrito_id;
+
+    UPDATE carritos
+    SET total = 0
+    WHERE id = p_carrito_id;
+
+    COMMIT;
+END;
+$$;
+
+
+----------------------------------- Historiales -----------------------------------
+----Punto 13----
+
+CREATE OR REPLACE FUNCTION trigger_historial_puntos()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO historial_puntos (usuario_id, cantidad, fecha, motivo, venta_id)
+    VALUES (
+        NEW.usuario_id,
+        NEW.cantidad,
+        COALESCE(NEW.fecha_ganacia, NEW.fecha_redencion),
+        NEW.motivo,
+        NULL -- Opcional: referencia a ventas si aplica
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+----Punto 15----
+
+CREATE OR REPLACE FUNCTION trigger_historial_compras()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO historial_compras (cliente_id, fecha, total_efectivo, puntos_redimidos, carrito_id, factura_id)
+    VALUES (
+        NEW.cliente_id,
+        NEW.fecha,
+        NEW.total,
+        NULL, -- Si puntos redimidos se calculan en otro lado, ajusta aquí.
+        NEW.carrito_id,
+        NEW.id
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 
 
+----------Triggers----------
+----Trigger 1----
+CREATE TRIGGER crear_factura_tras_venta
+AFTER INSERT ON venta
+FOR EACH ROW
+EXECUTE FUNCTION generar_factura_venta();
 
+----Punto 13----
+CREATE TRIGGER trigger_puntos_ganados
+AFTER INSERT ON puntos_ganados
+FOR EACH ROW
+EXECUTE FUNCTION trigger_historial_puntos();
+
+CREATE TRIGGER trigger_puntos_redimidos
+AFTER INSERT ON puntos_redimidos
+FOR EACH ROW
+EXECUTE FUNCTION trigger_historial_puntos();
+
+----Punto 15----
+
+CREATE TRIGGER trigger_facturas
+AFTER INSERT ON facturas
+FOR EACH ROW
+EXECUTE FUNCTION trigger_historial_compras();
+
+
+----------------------------------- Factura -----------------------------------
+----------XML----------
+
+CREATE OR REPLACE PROCEDURE generar_factura_xml(
+    p_factura_id INT
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_factura RECORD;
+    v_productos RECORD;
+    v_xml XML;
+BEGIN
+    -- Obtener los datos de la factura
+    SELECT f.codigo, f.fecha, f.subtotal, f.total, f.impuesto, f.estado, u.nombre
+    INTO v_factura
+    FROM facturas f
+    JOIN usuarios u ON f.cliente_id = u.id
+    WHERE f.id = p_factura_id;
+
+    -- Iniciar el XML
+    v_xml := '<?xml version="1.0" encoding="UTF-8"?>' ||
+             '<factura>' ||
+             '<codigo>' || v_factura.codigo || '</codigo>' ||
+             '<fecha>' || v_factura.fecha || '</fecha>' ||
+             '<subtotal>' || v_factura.subtotal || '</subtotal>' ||
+             '<total>' || v_factura.total || '</total>' ||
+             '<impuesto>' || v_factura.impuesto || '</impuesto>' ||
+             '<estado>' || v_factura.estado || '</estado>' ||
+             '<cliente>' ||
+             '<nombre>' || v_factura.nombre || '</nombre>' ||
+             '</cliente>' ||
+             '<productos>';
+
+    -- Obtener los productos asociados a la factura
+    FOR v_productos IN
+        SELECT p.nombre, v.cantidad, p.precio, (p.precio * v.cantidad) AS total_producto
+        FROM ventas v
+        JOIN productos p ON v.producto_id = p.id
+        WHERE v.carrito_id = (SELECT carrito_id FROM facturas WHERE id = p_factura_id)
+    LOOP
+        v_xml := v_xml ||
+                 '<producto>' ||
+                 '<nombre>' || v_productos.nombre || '</nombre>' ||
+                 '<cantidad>' || v_productos.cantidad || '</cantidad>' ||
+                 '<precio>' || v_productos.precio || '</precio>' ||
+                 '<total>' || v_productos.total_producto || '</total>' ||
+                 '</producto>';
+    END LOOP;
+
+    -- Cerrar el XML
+    v_xml := v_xml || '</productos>' || '</factura>';
+
+    -- Guardar el archivo XML en el sistema de archivos o retornar como texto
+    -- Para guardar en el sistema de archivos, sería necesario un procedimiento específico
+    -- que dependa de los permisos y configuraciones del servidor de base de datos.
+    -- En este caso, simplemente retornamos el XML como texto.
+
+    RAISE NOTICE '%', v_xml;  -- Aquí puedes manejar el XML como desees, por ejemplo, devolverlo o almacenarlo en un archivo.
+
+    -- Opcionalmente, almacenar el XML en alguna tabla para rastrear las facturas generadas
+    -- INSERT INTO historial_facturas (factura_id, xml) VALUES (p_factura_id, v_xml);
+
+END;
+$$;
 
 ------------Registros para pruebitas------------
 INSERT INTO usuarios (numero_documento, nombre, contrasenia, email, celular, puntos, rol) VALUES
