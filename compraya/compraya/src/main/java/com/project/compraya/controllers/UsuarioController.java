@@ -9,6 +9,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import com.project.compraya.entities.Usuario;
+import jakarta.activation.DataSource;
+import java.sql.CallableStatement;
+import java.sql.Connection;
+import java.util.HashMap;
 
 
 /**
@@ -16,7 +20,10 @@ import com.project.compraya.entities.Usuario;
  * @author ASUS
  */
 import java.util.List;
+import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.simple.SimpleJdbcCall;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
@@ -48,4 +55,23 @@ public class UsuarioController {
     public List<Usuario> listarUsuarios() {
         return usuarioRepository.findAll();
     }
+    
+    @PostMapping("/create")    
+    public void crearUsuario(String numeroDocumento, String nombre, String contrasenia,
+                             String email, String celular, int rol, Integer puntos) {
+        String sql = "CALL crear_usuario(?, ?, ?, ?, ?, ?, ?)";
+
+        jdbcTemplate.update(sql, 
+            numeroDocumento, 
+            nombre, 
+            contrasenia, 
+            email, 
+            celular, 
+            rol, 
+            (puntos != null) ? puntos : 0  // Manejar valor por defecto en Java si es nulo
+        );
+    }
+
+
+
 }
