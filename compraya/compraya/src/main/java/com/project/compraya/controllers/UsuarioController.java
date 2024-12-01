@@ -24,7 +24,10 @@ import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.simple.SimpleJdbcCall;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 @RestController
@@ -34,7 +37,7 @@ public class UsuarioController {
     @Autowired
     private UsuarioRepository usuarioRepository;
 
-        @Autowired
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     // Endpoint para realizar login
@@ -70,6 +73,39 @@ public class UsuarioController {
             rol, 
             (puntos != null) ? puntos : 0  // Manejar valor por defecto en Java si es nulo
         );
+    }
+    
+    @PutMapping("/{id}")    
+    public void actualizarUsuario(
+            @PathVariable Integer id, 
+            String numeroDocumento, 
+            String nombre, 
+            String contrasenia,         
+            String email, 
+            String celular, 
+            Integer puntos) {
+        
+        String sql = "CALL compraya.modificar_usuario(?,?, ?, ?, ?, ?, ?)";
+
+        jdbcTemplate.update(sql,
+            id,
+            numeroDocumento, 
+            nombre, 
+            contrasenia, 
+            email, 
+            celular, 
+            (puntos != null) ? puntos : 0  // Manejar valor por defecto en Java si es nulo
+        );
+    }
+    
+        @DeleteMapping("/{id}")    
+    public void eliminarUsuario(
+            @PathVariable Integer id) {
+        
+        String sql = "CALL compraya.eliminar_usuario(?)";
+
+        jdbcTemplate.update(sql,
+            id );
     }
 
 

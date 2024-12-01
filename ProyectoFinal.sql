@@ -253,26 +253,26 @@ CREATE OR REPLACE PROCEDURE modificar_usuario(
 LANGUAGE plpgsql AS $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM usuario WHERE id = usuario_id_input
+        SELECT 1 FROM compraya.usuario WHERE id = usuario_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El usuario con ID % no existe.', usuario_id_input;
     END IF;
 
     IF EXISTS (
-        SELECT 1 FROM usuario 
+        SELECT 1 FROM compraya.usuario 
         WHERE numero_documento = numero_documento_input AND id != usuario_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El número de documento % ya está registrado para otro usuario.', numero_documento_input;
     END IF;
 
     IF EXISTS (
-        SELECT 1 FROM usuario 
+        SELECT 1 FROM compraya.usuario 
         WHERE email = email_input AND id != usuario_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El correo electrónico % ya está registrado para otro usuario.', email_input;
     END IF;
 
-    UPDATE usuario
+    UPDATE compraya.usuario
     SET 
         numero_documento = numero_documento_input,
         nombre = nombre_input,
