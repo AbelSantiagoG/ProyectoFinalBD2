@@ -184,14 +184,16 @@ CREATE TABLE historial_compras (
 ----------------------------------- Usuarios -----------------------------------
 
 ----------Crear usuario----------
+
+----------Crear usuario----------
 CREATE OR REPLACE PROCEDURE crear_usuario(
     numero_documento_input VARCHAR,
     nombre_input VARCHAR,
     contrasenia_input VARCHAR,
     email_input VARCHAR,
     celular_input VARCHAR,
-    rol_input INT,               -- Sin valor por defecto
-    puntos_input INT DEFAULT 0   -- Último parámetro con valor por defecto
+    puntos_input INT DEFAULT 0,
+    rol_input int 
 )
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -207,7 +209,7 @@ BEGIN
         RAISE EXCEPTION 'Error: El correo electrónico % ya está registrado.', email_input;
     END IF;
 
-    INSERT INTO compraya.usuarios (
+    INSERT INTO usuarios (
         numero_documento, nombre, contrasenia, email, celular, puntos, rol
     ) VALUES (
         numero_documento_input, nombre_input, contrasenia_input, email_input, celular_input, puntos_input, rol_input
