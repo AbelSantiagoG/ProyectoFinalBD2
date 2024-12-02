@@ -180,12 +180,19 @@ CREATE TABLE historial_compras (
     carrito_id INT NOT NULL REFERENCES carritos(id),
     factura_id INT NOT NULL REFERENCES facturas(id)
 );
+
+CREATE TABLE auditoria (
+    id SERIAL PRIMARY KEY,
+    accion VARCHAR(50) NOT NULL,
+    usuario_id INT NOT NULL,
+    factura_id INT NOT NULL,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    detalle TEXT
+);
 ----------------------------------------------------Funcionalidades----------------------------------------------------
 ----------------------------------- Usuarios -----------------------------------
 
-----------Crear usuario----------
-
-----------Crear usuario----------
+----------Crear usuario (register)----------
 CREATE OR REPLACE PROCEDURE crear_usuario(
     numero_documento_input VARCHAR,
     nombre_input VARCHAR,
@@ -222,52 +229,115 @@ $$;
 ----------Login----------
 
 CREATE OR REPLACE FUNCTION login_usuario(email_input VARCHAR, contrasenia_input VARCHAR)
-RETURNS TEXT AS $$
+RETURNS VARCHAR AS $$
 DECLARE
+    numero_documento_actual VARCHAR;
     contrasenia_actual VARCHAR;
 BEGIN
-    SELECT contrasenia INTO contrasenia_actual
+    SELECT contrasenia, numero_documento
+    INTO contrasenia_actual, numero_documento_actual
     FROM usuarios
     WHERE email = email_input;
 
     IF contrasenia_actual IS NULL THEN
-        RETURN 'El usuario no existe';
-    ELSIF contrasenia_actual = contrasenia_input THEN
-        RETURN 'Login exitoso';
+        RAISE EXCEPTION 'El usuario no existe';
+    END IF;
+
+    IF contrasenia_actual = contrasenia_input THEN
+        CALL establecer_sesion(numero_documento_actual);
+
+        RETURN numero_documento_actual;
     ELSE
-        RETURN 'Contraseña incorrecta';
+        RAISE EXCEPTION 'Contraseña incorrecta';
     END IF;
 END;
 $$ LANGUAGE plpgsql;
+
+----------Establecer sesión----------
+
+CREATE OR REPLACE PROCEDURE establecer_sesion(_numero_documento VARCHAR)
+LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM set_config('app.numero_documento', _numero_documento, TRUE);
+END;
+$$;
+
+----------Cerrar sesión----------
+
+CREATE OR REPLACE PROCEDURE cerrar_sesion()
+LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM set_config('app.numero_documento', NULL, TRUE);
+END;
+$$;
+
+----------¿Usuario logueado?----------
+
+CREATE OR REPLACE FUNCTION es_usuario_logueado()
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN current_setting('app.numero_documento', TRUE) IS NOT NULL;
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql;
+
+----------Rol del usuario logueado----------
+
+CREATE OR REPLACE FUNCTION obtener_rol_usuario()
+RETURNS INT AS $$
+DECLARE
+    rol_usuario INT;
+BEGIN
+    SELECT rol INTO rol_usuario
+    FROM usuarios
+    WHERE numero_documento = current_setting('app.numero_documento', TRUE);
+
+    RETURN rol_usuario;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE EXCEPTION 'No hay un usuario logueado';
+END;
+$$ LANGUAGE plpgsql;
+
 
 ----------Actualizar usuario----------
 
 CREATE OR REPLACE PROCEDURE modificar_usuario(
     usuario_id_input INT,
-    numero_documento_input VARCHAR,
-    nombre_input VARCHAR,
-    contrasenia_input VARCHAR,
-    email_input VARCHAR,
-    celular_input VARCHAR,
-    puntos_input INT,
-    rol_input int
+    numero_documento_input VARCHAR DEFAULT NULL,
+    nombre_input VARCHAR DEFAULT NULL,
+    contrasenia_input VARCHAR DEFAULT NULL,
+    email_input VARCHAR DEFAULT NULL,
+    celular_input VARCHAR DEFAULT NULL,
+    puntos_input INT DEFAULT NULL,
+    rol_input INT DEFAULT NULL
 )
 LANGUAGE plpgsql AS $$
 BEGIN
+    IF NOT es_usuario_logueado() THEN
+        RAISE EXCEPTION 'Error: No hay un usuario logueado.';
+    END IF;
+
+    IF obtener_rol_usuario() != 1 THEN
+        RAISE EXCEPTION 'Error: No tienes permisos para modificar usuarios.';
+    END IF;
+
     IF NOT EXISTS (
         SELECT 1 FROM compraya.usuario WHERE id = usuario_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El usuario con ID % no existe.', usuario_id_input;
     END IF;
 
-    IF EXISTS (
+    IF numero_documento_input IS NOT NULL AND EXISTS (
         SELECT 1 FROM compraya.usuario 
         WHERE numero_documento = numero_documento_input AND id != usuario_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El número de documento % ya está registrado para otro usuario.', numero_documento_input;
     END IF;
 
-    IF EXISTS (
+    IF email_input IS NOT NULL AND EXISTS (
         SELECT 1 FROM compraya.usuario 
         WHERE email = email_input AND id != usuario_id_input
     ) THEN
@@ -276,18 +346,19 @@ BEGIN
 
     UPDATE compraya.usuario
     SET 
-        numero_documento = numero_documento_input,
-        nombre = nombre_input,
-        contrasenia = contrasenia_input,
-        email = email_input,
-        celular = celular_input,
-        puntos = puntos_input,
-        rol = rol_input	
+        numero_documento = COALESCE(numero_documento_input, numero_documento),
+        nombre = COALESCE(nombre_input, nombre),
+        contrasenia = COALESCE(contrasenia_input, contrasenia),
+        email = COALESCE(email_input, email),
+        celular = COALESCE(celular_input, celular),
+        puntos = COALESCE(puntos_input, puntos),
+        rol = COALESCE(rol_input, rol)
     WHERE id = usuario_id_input;
 
     RAISE NOTICE 'Usuario con ID % modificado exitosamente.', usuario_id_input;
 END;
 $$;
+
 
 ----------Eliminar usuario----------
 
@@ -333,7 +404,7 @@ $$;
 
 ----------------------------------- Productos -----------------------------------
 
-----------Crear producto----------
+----------Crear producto (Solo administrador)----------
 
 CREATE OR REPLACE PROCEDURE crear_producto(
     nombre_input VARCHAR,
@@ -345,19 +416,27 @@ CREATE OR REPLACE PROCEDURE crear_producto(
 )
 LANGUAGE plpgsql AS $$
 BEGIN
+    IF NOT es_usuario_logueado() THEN
+        RAISE EXCEPTION 'Error: No hay un usuario logueado.';
+    END IF;
+
+    IF obtener_rol_usuario() != 1 THEN
+        RAISE EXCEPTION 'Error: No tienes permisos para crear productos.';
+    END IF;
+
     IF EXISTS (
-        SELECT 1 FROM producto WHERE nombre = nombre_input
+        SELECT 1 FROM productos WHERE nombre = nombre_input
     ) THEN
         RAISE EXCEPTION 'Error: El producto con nombre % ya está registrado.', nombre_input;
     END IF;
 
     IF NOT EXISTS (
-        SELECT 1 FROM categoria WHERE id = categoria_id_input
+        SELECT 1 FROM categorias WHERE id = categoria_id_input
     ) THEN
         RAISE EXCEPTION 'Error: La categoría con ID % no existe.', categoria_id_input;
     END IF;
 
-    INSERT INTO producto (
+    INSERT INTO productos (
         nombre, descripcion, precio, imagen, descuento, categoria_id
     ) VALUES (
         nombre_input, descripcion_input, precio_input, imagen_input, descuento_input, categoria_id_input
@@ -367,62 +446,81 @@ BEGIN
 END;
 $$;
 
-----------Actualizar producto----------
+
+----------Actualizar producto (Solo administrador)----------
 
 CREATE OR REPLACE PROCEDURE modificar_producto(
     producto_id_input INT,
-    nombre_input VARCHAR,
-    descripcion_input VARCHAR,
-    precio_input NUMERIC,
-    imagen_input VARCHAR,
-    descuento_input INT,
-    categoria_id_input INT
+    nombre_input VARCHAR DEFAULT NULL,
+    descripcion_input VARCHAR DEFAULT NULL,
+    precio_input NUMERIC DEFAULT NULL,
+    imagen_input VARCHAR DEFAULT NULL,
+    descuento_input INT DEFAULT NULL,
+    categoria_id_input INT DEFAULT NULL
 )
 LANGUAGE plpgsql AS $$
 BEGIN
+    IF NOT es_usuario_logueado() THEN
+        RAISE EXCEPTION 'Error: No hay un usuario logueado.';
+    END IF;
+
+    IF obtener_rol_usuario() != 1 THEN
+        RAISE EXCEPTION 'Error: No tienes permisos para modificar productos.';
+    END IF;
+
     IF NOT EXISTS (
-        SELECT 1 FROM producto WHERE id = producto_id_input
+        SELECT 1 FROM productos WHERE id = producto_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El producto con ID % no existe.', producto_id_input;
     END IF;
 
-    IF NOT EXISTS (
-        SELECT 1 FROM categoria WHERE id = categoria_id_input
+    IF categoria_id_input IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM categorias WHERE id = categoria_id_input
     ) THEN
         RAISE EXCEPTION 'Error: La categoría con ID % no existe.', categoria_id_input;
     END IF;
 
-    UPDATE producto
+    UPDATE productos
     SET
-        nombre = nombre_input,
-        descripcion = descripcion_input,
-        precio = precio_input,
-        imagen = imagen_input,
-        descuento = descuento_input,
-        categoria_id = categoria_id_input
+        nombre = COALESCE(nombre_input, nombre),
+        descripcion = COALESCE(descripcion_input, descripcion),
+        precio = COALESCE(precio_input, precio),
+        imagen = COALESCE(imagen_input, imagen),
+        descuento = COALESCE(descuento_input, descuento),
+        categoria_id = COALESCE(categoria_id_input, categoria_id)
     WHERE id = producto_id_input;
 
     RAISE NOTICE 'Producto con ID % modificado exitosamente.', producto_id_input;
 END;
 $$;
 
-----------Eliminar producto----------
+
+----------Eliminar producto (Solo administrador)----------
 
 CREATE OR REPLACE PROCEDURE eliminar_producto(producto_id_input INT)
 LANGUAGE plpgsql AS $$
 BEGIN
+    IF NOT es_usuario_logueado() THEN
+        RAISE EXCEPTION 'Error: No hay un usuario logueado.';
+    END IF;
+
+    IF obtener_rol_usuario() != 1 THEN
+        RAISE EXCEPTION 'Error: No tienes permisos para eliminar productos.';
+    END IF;
+
     IF NOT EXISTS (
-        SELECT 1 FROM producto WHERE id = producto_id_input
+        SELECT 1 FROM productos WHERE id = producto_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El producto con ID % no existe.', producto_id_input;
     END IF;
 
-    DELETE FROM producto
+    DELETE FROM productos
     WHERE id = producto_id_input;
 
     RAISE NOTICE 'Producto con ID % eliminado exitosamente.', producto_id_input;
 END;
 $$;
+
 
 ----------Obtener todos los productos----------
 
@@ -701,6 +799,67 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+----------Realizar pago----------
+
+CREATE OR REPLACE PROCEDURE registrar_pago(
+    venta_id_input INT,
+    puntos_usados_input INT,
+    efectivo_usado_input NUMERIC
+)
+LANGUAGE plpgsql AS $$
+DECLARE
+    total_venta NUMERIC;
+    puntos_usuario INT;
+    metodo_pago VARCHAR(20);
+BEGIN
+    -- Obtener el total de la venta
+    SELECT total INTO total_venta
+    FROM facturas
+    WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input);
+
+    -- Obtener los puntos disponibles del usuario
+    SELECT puntos INTO puntos_usuario
+    FROM usuarios
+    WHERE id = (SELECT cliente_id FROM facturas WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input));
+
+    -- Validar el pago según el tipo
+    IF puntos_usados_input > puntos_usuario THEN
+        RAISE EXCEPTION 'Error: No tienes suficientes puntos para completar el pago.';
+    END IF;
+
+    -- Validar si el pago total es igual al monto de la venta
+    IF puntos_usados_input + efectivo_usado_input != total_venta THEN
+        RAISE EXCEPTION 'Error: El total de puntos y efectivo no coincide con el monto de la venta.';
+    END IF;
+
+    -- Registrar el tipo de pago (puntos, efectivo o mixto)
+    IF puntos_usados_input > 0 AND efectivo_usado_input > 0 THEN
+        metodo_pago := 'mixto';
+    ELSIF puntos_usados_input > 0 THEN
+        metodo_pago := 'puntos';
+    ELSIF efectivo_usado_input > 0 THEN
+        metodo_pago := 'efectivo';
+    ELSE
+        RAISE EXCEPTION 'Error: No se ha proporcionado un método de pago válido.';
+    END IF;
+
+    -- Actualizar los puntos del usuario (si se usan puntos)
+    IF puntos_usados_input > 0 THEN
+        UPDATE usuarios
+        SET puntos = puntos - puntos_usados_input
+        WHERE id = (SELECT cliente_id FROM facturas WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input));
+    END IF;
+
+    -- Actualizar el estado de la factura a "pagado"
+    UPDATE facturas
+    SET estado = 'pagado'
+    WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input);
+
+    RAISE NOTICE 'Pago registrado exitosamente con método %.', metodo_pago;
+END;
+$$;
+
+
 ----------------------------------- Carrito -----------------------------------
 
 ----------Agregar producto al carrito----------
@@ -820,11 +979,12 @@ BEGIN
         NEW.cantidad,
         COALESCE(NEW.fecha_ganacia, NEW.fecha_redencion),
         NEW.motivo,
-        NULL -- Opcional: referencia a ventas si aplica
+        NEW.venta_id  -- Si tienes un campo 'venta_id' relacionado con la redención de puntos
     );
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
 
 ----Punto 15----
 
@@ -835,8 +995,8 @@ BEGIN
     VALUES (
         NEW.cliente_id,
         NEW.fecha,
-        NEW.total,
-        NULL, -- Si puntos redimidos se calculan en otro lado, ajusta aquí.
+        NEW.total_efectivo,  -- Debería capturar el monto real pagado en efectivo
+        NEW.puntos_redimidos,  -- Capturar los puntos redimidos durante la compra
         NEW.carrito_id,
         NEW.id
     );
@@ -844,6 +1004,88 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
+----------------------------------- Informe pdf y excel -----------------------------------
+
+CREATE OR REPLACE FUNCTION obtener_informe_compras_puntos(usuario_id_input INT)
+RETURNS TABLE (
+    fecha DATE,
+    total_efectivo NUMERIC,
+    puntos_redimidos INT,
+    puntos_acumulados INT,
+    motivo VARCHAR
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        hc.fecha,
+        hc.total_efectivo,
+        hc.puntos_redimidos,
+        COALESCE(pg.cantidad, 0) AS puntos_acumulados,
+        pg.motivo
+    FROM historial_compras hc
+    LEFT JOIN historial_puntos pg ON hc.cliente_id = pg.usuario_id AND hc.factura_id = pg.venta_id
+    WHERE hc.cliente_id = usuario_id_input
+    ORDER BY hc.fecha DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+----------------------------------- Auditoría -----------------------------------
+
+----------Crear auditoría después de una factura----------
+
+CREATE OR REPLACE FUNCTION registrar_auditoria_factura()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO auditoria (accion, usuario_id, factura_id, detalle)
+    VALUES (
+        'CREACIÓN DE FACTURA', 
+        NEW.cliente_id,  -- Asumiendo que cliente_id es el usuario que crea la factura
+        NEW.id,  -- ID de la nueva factura
+        'Factura generada con un total de: ' || NEW.total
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+----------Búsqueda de auditoría por usuario y producto----------
+
+CREATE OR REPLACE FUNCTION buscar_auditoria_por_usuario_producto(
+    nombre_usuario_input VARCHAR,
+    nombre_producto_input VARCHAR
+)
+RETURNS TABLE (
+    auditoria_id INT,
+    accion VARCHAR,
+    usuario_id INT,
+    factura_id INT,
+    fecha TIMESTAMP,
+    detalle TEXT,
+    nombre_usuario VARCHAR,
+    nombre_producto VARCHAR
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        a.id AS auditoria_id,
+        a.accion,
+        a.usuario_id,
+        a.factura_id,
+        a.fecha,
+        a.detalle,
+        u.nombre AS nombre_usuario,
+        p.nombre AS nombre_producto
+    FROM auditoria a
+    LEFT JOIN usuarios u ON a.usuario_id = u.id
+    LEFT JOIN facturas f ON a.factura_id = f.id
+    LEFT JOIN ventas v ON f.carrito_id = v.carrito_id
+    LEFT JOIN productos p ON v.producto_id = p.id
+    WHERE
+        (nombre_usuario_input IS NULL OR u.nombre ILIKE '%' || nombre_usuario_input || '%')
+        AND (nombre_producto_input IS NULL OR p.nombre ILIKE '%' || nombre_producto_input || '%')
+    ORDER BY a.fecha DESC;
+END;
+$$ LANGUAGE plpgsql;
 
 
 ----------Triggers----------
@@ -870,6 +1112,12 @@ CREATE TRIGGER trigger_facturas
 AFTER INSERT ON facturas
 FOR EACH ROW
 EXECUTE FUNCTION trigger_historial_compras();
+
+----Punto 18----
+CREATE TRIGGER trigger_auditoria_factura
+AFTER INSERT ON facturas
+FOR EACH ROW
+EXECUTE FUNCTION registrar_auditoria_factura();
 
 
 ----------------------------------- Factura -----------------------------------
@@ -938,18 +1186,20 @@ BEGIN
 END;
 $$;
 
+
 ------------Registros para pruebitas------------
+
 INSERT INTO usuarios (numero_documento, nombre, contrasenia, email, celular, puntos, rol) VALUES
-('1234567890', 'Juan Perez', 'password1', 'juan.perez@gmail.com', '3001234567', 50, 1),
-('0987654321', 'Maria Gomez', 'password2', 'maria.gomez@gmail.com', '3107654321', 40, 1),
-('1122334455', 'Luis Alvarez', 'password3', 'luis.alvarez@gmail.com', '3201122334', 60, 1),
-('5566778899', 'Ana Morales', 'password4', 'ana.morales@gmail.com', '3015566778', 30, 1),
-('3344556677', 'Carlos Diaz', 'password5', 'carlos.diaz@gmail.com', '3113344556', 70, 1),
-('2233445566', 'Laura Lopez', 'password6', 'laura.lopez@gmail.com', '3022233445', 80, 1),
-('9988776655', 'Felipe Herrera', 'password7', 'felipe.herrera@gmail.com', '3129988776', 90, 1),
-('8877665544', 'Sofia Martinez', 'password8', 'sofia.martinez@gmail.com', '3038877665', 20, 1),
-('7766554433', 'Andres Torres', 'password9', 'andres.torres@gmail.com', '3137766554', 10, 1),
-('1', 'admin', '12345678', 'admin@gmail.com', '305', 999999, 2);
+('1234567890', 'Juan Perez', 'password1', 'juan.perez@gmail.com', '3001234567', 50, 0),
+('0987654321', 'Maria Gomez', 'password2', 'maria.gomez@gmail.com', '3107654321', 40, 0),
+('1122334455', 'Luis Alvarez', 'password3', 'luis.alvarez@gmail.com', '3201122334', 60, 0),
+('5566778899', 'Ana Morales', 'password4', 'ana.morales@gmail.com', '3015566778', 30, 0),
+('3344556677', 'Carlos Diaz', 'password5', 'carlos.diaz@gmail.com', '3113344556', 70, 0),
+('2233445566', 'Laura Lopez', 'password6', 'laura.lopez@gmail.com', '3022233445', 80, 0),
+('9988776655', 'Felipe Herrera', 'password7', 'felipe.herrera@gmail.com', '3129988776', 90, 0),
+('8877665544', 'Sofia Martinez', 'password8', 'sofia.martinez@gmail.com', '3038877665', 20, 0),
+('7766554433', 'Andres Torres', 'password9', 'andres.torres@gmail.com', '3137766554', 10, 0),
+('1', 'admin', '12345678', 'admin@gmail.com', '305', 999999, 1);
 
 INSERT INTO categorias (nombre) VALUES
 ('Electrónica'),
