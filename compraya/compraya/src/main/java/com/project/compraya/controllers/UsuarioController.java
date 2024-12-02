@@ -9,21 +9,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import com.project.compraya.entities.Usuario;
-import jakarta.activation.DataSource;
-import java.sql.CallableStatement;
-import java.sql.Connection;
-import java.util.HashMap;
-
 
 /**
  *
  * @author ASUS
  */
 import java.util.List;
-import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.simple.SimpleJdbcCall;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -40,16 +32,16 @@ public class UsuarioController {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // Endpoint para realizar login
+
     @PostMapping("/login")
     public String login(@RequestParam String email, @RequestParam String contrasenia) {
-        // Llama a la función almacenada login_usuario
+
         String sql = "SELECT compraya.login_usuario(?, ?)";
 
-        // Ejecuta la función almacenada y obtiene el resultado
+
         String resultado = jdbcTemplate.queryForObject(sql, new Object[]{email, contrasenia}, String.class);
 
-        // Devuelve el resultado obtenido de la función almacenada
+
         return resultado;
     }
 
@@ -70,7 +62,7 @@ public class UsuarioController {
             email, 
             celular, 
             rol, 
-            (puntos != null) ? puntos : 0  // Manejar valor por defecto en Java si es nulo
+            (puntos != null) ? puntos : 0 
         );
     }
     

@@ -8,16 +8,14 @@ import com.project.compraya.entities.Producto;
 import com.project.compraya.repositories.ProductoRepository;
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataAccessException;
+
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.jdbc.core.simple.SimpleJdbcCall;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -56,14 +54,14 @@ public String crearProducto(
     System.out.println("Descuento: " + descuento);
     System.out.println("Categoría ID: " + categoriaId);
 
-    // Procedimiento SQL sin CAST
+
     String sql = "CALL compraya.crear_producto(?, ?, ?, ?, ?, ?)";
 
     try {
         jdbcTemplate.update(sql, nombre, descripcion, precio, imagen, descuento, categoriaId);
         return "Producto creado exitosamente.";
     } catch (Exception e) {
-        e.printStackTrace(); // Para más detalles del error
+        e.printStackTrace(); 
         return "Error al crear el producto: " + e.getMessage();
     }
     
@@ -79,19 +77,18 @@ public String modificarProducto(
         @RequestParam int descuento,
         @RequestParam int categoriaId) {
 
-    // Procedimiento SQL para ejecutar el procedimiento almacenado
     String sql = "CALL compraya.modificar_producto(?, ?, ?, ?, ?, ?, ?)";
 
     try {
         // Ejecutar el procedimiento almacenado
         jdbcTemplate.update(sql,
-                productoId,        // ID del producto para actualizar
-                nombre,            // Nombre del producto
-                descripcion,       // Descripción del producto
-                precio,            // Precio del producto
-                imagen,            // Imagen del producto
-                descuento,         // Descuento del producto
-                categoriaId        // ID de la categoría
+                productoId,       
+                nombre,          
+                descripcion,      
+                precio,          
+                imagen,          
+                descuento,         
+                categoriaId     
         );
         
         return "Producto modificado exitosamente.";
@@ -106,15 +103,12 @@ public String modificarProducto(
 @DeleteMapping("/{productoId}")
 public String eliminarProducto(@PathVariable Integer productoId) {
 
-    // Procedimiento SQL para ejecutar el procedimiento almacenado eliminar_producto
     String sql = "CALL compraya.eliminar_producto(?)";
 
     try {
-        // Ejecutar el procedimiento almacenado con el ID del producto
         jdbcTemplate.update(sql, productoId);
         return "Producto eliminado exitosamente.";
     } catch (Exception e) {
-        // Manejo de errores
         e.printStackTrace();
         return "Error al eliminar el producto: " + e.getMessage();
     }
