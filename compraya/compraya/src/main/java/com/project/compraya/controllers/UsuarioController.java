@@ -60,8 +60,7 @@ public class UsuarioController {
     }
     
     @PostMapping("/create")    
-    public void crearUsuario(String numeroDocumento, String nombre, String contrasenia,
-                             String email, String celular, int rol, Integer puntos) {
+    public void crearUsuario(String numeroDocumento, String nombre, String contrasenia, String email, String celular, int rol, Integer puntos) {
         String sql = "CALL crear_usuario(?, ?, ?, ?, ?, ?, ?)";
 
         jdbcTemplate.update(sql, 

@@ -22,8 +22,8 @@ public class Producto {
     @Column (name = "nombre", nullable = false, unique = true, length = 40)
     private String nombre;
 
-    @Column(name = "description" , length = 100)
-    private String description;
+    @Column(name = "descripcion" , length = 100)
+    private String descripcion;
     
     @Column(name = "precio", nullable = false)
     private float precio;
@@ -41,10 +41,10 @@ public class Producto {
     public Producto() {
     }
 
-    public Producto(Long id, String nombre, String description, float precio, String name, int descuento, Categoria categoria) {
+    public Producto(Long id, String nombre, String descripcion, float precio, String name, int descuento, Categoria categoria) {
         this.id = id;
         this.nombre = nombre;
-        this.description = description;
+        this.descripcion = descripcion;
         this.precio = precio;
         this.name = name;
         this.descuento = descuento;
@@ -67,12 +67,12 @@ public class Producto {
         this.nombre = nombre;
     }
 
-    public String getDescription() {
-        return description;
+    public String getDescripcion() {
+        return descripcion;
     }
 
-    public void setDescription(String description) {
-        this.description = description;
+    public void setDescripcion(String description) {
+        this.descripcion = description;
     }
 
     public float getPrecio() {
