@@ -105,12 +105,13 @@ create table inventarios(
 create table carritos(
 	id int primary key default nextval('carritoSecuencia'),
 	cantidad int,
-	total numeric
+	total numeric,
+	usuario_id INT REFERENCES compraya.usuarios(id) UNIQUE
 );
-
 
 create table ventas(
 	id int primary key default nextval('ventaSecuencia'),
+	cantidad INT DEFAULT 0,
 	carrito_id int references carritos(id),
 	producto_id int references productos(id)
 );
@@ -380,25 +381,28 @@ $$;
 
 ----------Obtener todos los usuarios----------
 
-CREATE OR REPLACE PROCEDURE obtener_todos_los_usuarios()
-LANGUAGE plpgsql AS $$
-DECLARE
-    usuario_record RECORD;
+CREATE OR REPLACE FUNCTION obtener_todos_los_usuarios()
+RETURNS TABLE (
+    id INT,
+    numero_documento VARCHAR,
+    nombre VARCHAR,
+    email VARCHAR,
+    celular VARCHAR,
+    puntos INT
+) AS $$
 BEGIN
-    FOR usuario_record IN 
-        SELECT id, numero_documento, nombre, email, celular, puntos
-        FROM compraya.usuarios
-    LOOP
-        RAISE NOTICE 'ID: %, Documento: %, Nombre: %, Email: %, Celular: %, Puntos: %',
-            usuario_record.id,
-            usuario_record.numero_documento,
-            usuario_record.nombre,
-            usuario_record.email,
-            usuario_record.celular,
-            usuario_record.puntos;
-    END LOOP;
+    RETURN QUERY 
+    SELECT 
+        u.id, 
+        u.numero_documento, 
+        u.nombre, 
+        u.email, 
+        u.celular, 
+        u.puntos
+    FROM compraya.usuarios u;
 END;
-$$;
+$$ LANGUAGE plpgsql;
+
 
 
 
@@ -640,24 +644,153 @@ CREATE OR REPLACE FUNCTION obtener_productos_mas_vendidos()
 RETURNS TABLE(
     producto_id INT,
     nombre VARCHAR,
-    cantidad_vendida INT
+    cantidad_vendida INT  
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
         p.id AS producto_id,
         p.nombre,
-        COUNT(v.producto_id) AS cantidad_vendida
+        COUNT(v.producto_id)::INT AS cantidad_vendida 
     FROM 
         compraya.productos p
     JOIN 
-        venta v ON p.id = v.producto_id
+        compraya.ventas v ON p.id = v.producto_id
     GROUP BY 
         p.id, p.nombre
     ORDER BY 
         cantidad_vendida DESC;
 END;
 $$ LANGUAGE plpgsql;
+
+
+----------------------------------- Inventarios -----------------------------------
+----------Crear inventario----------
+CREATE OR REPLACE PROCEDURE crear_inventario(
+    producto_id_input INT,
+    cantidad_disponible_input INT,
+    referencia_compra_input VARCHAR
+)
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM compraya.productos WHERE id = producto_id_input
+    ) THEN
+        RAISE EXCEPTION 'Error: El producto con ID % no existe.', producto_id_input;
+    END IF;
+
+    INSERT INTO compraya.inventarios (producto_id, cantidad_disponible, referencia_compra)
+    VALUES (producto_id_input, cantidad_disponible_input, referencia_compra_input);
+
+    RAISE NOTICE 'Inventario creado exitosamente para el producto con ID %.', producto_id_input;
+END;
+$$;
+
+----------Actualizar cantidad inventario----------
+CREATE OR REPLACE PROCEDURE actualizar_inventario(
+    producto_id_input INT,
+    cantidad_disponible_input INT
+)
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM compraya.inventarios WHERE producto_id = producto_id_input
+    ) THEN
+        RAISE EXCEPTION 'Error: No existe inventario para el producto con ID %.', producto_id_input;
+    END IF;
+
+    UPDATE compraya.inventarios
+    SET cantidad_disponible = cantidad_disponible_input
+    WHERE producto_id = producto_id_input;
+
+    RAISE NOTICE 'Cantidad de inventario actualizada para el producto con ID %.', producto_id_input;
+END;
+$$;
+
+----------Consultar inventario----------
+CREATE OR REPLACE FUNCTION consultar_inventario(producto_id_input INT)
+RETURNS TABLE(id INT, cantidad_disponible INT, referencia_compra VARCHAR) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        inventarios.id,  -- Aseguramos que se refiere a la columna id de la tabla 'inventarios'
+        inventarios.cantidad_disponible,
+        inventarios.referencia_compra
+    FROM compraya.inventarios
+    WHERE inventarios.producto_id = producto_id_input;
+END;
+$$ LANGUAGE plpgsql;
+
+
+----------Reducir inventario----------
+CREATE OR REPLACE PROCEDURE reducir_inventario(
+    producto_id_input INT,
+    cantidad_a_reducir INT
+)
+LANGUAGE plpgsql AS $$
+DECLARE
+    cantidad_actual INT;
+BEGIN
+    SELECT cantidad_disponible INTO cantidad_actual
+    FROM compraya.inventarios
+    WHERE producto_id = producto_id_input;
+
+    IF cantidad_actual IS NULL THEN
+        RAISE EXCEPTION 'Error: No existe inventario para el producto con ID %.', producto_id_input;
+    END IF;
+
+    IF cantidad_actual < cantidad_a_reducir THEN
+        RAISE EXCEPTION 'Error: Cantidad insuficiente en inventario. Disponible: %, Solicitado: %.',
+            cantidad_actual, cantidad_a_reducir;
+    END IF;
+
+    UPDATE compraya.inventarios
+    SET cantidad_disponible = cantidad_actual - cantidad_a_reducir
+    WHERE producto_id = producto_id_input;
+
+    RAISE NOTICE 'Inventario actualizado. Nueva cantidad disponible: %', cantidad_actual - cantidad_a_reducir;
+END;
+$$;
+
+----------Eliminar inventario----------
+CREATE OR REPLACE PROCEDURE eliminar_inventario(producto_id_input INT)
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM compraya.inventarios WHERE producto_id = producto_id_input
+    ) THEN
+        RAISE EXCEPTION 'Error: No existe inventario para el producto con ID %.', producto_id_input;
+    END IF;
+
+    DELETE FROM compraya.inventarios
+    WHERE producto_id = producto_id_input;
+
+    RAISE NOTICE 'Inventario eliminado para el producto con ID %.', producto_id_input;
+END;
+$$;
+
+----------Verificar disponibilidad----------
+CREATE OR REPLACE FUNCTION verificar_disponibilidad(producto_id_input INT, cantidad_solicitada INT)
+RETURNS BOOLEAN AS $$
+DECLARE
+    cantidad_disponible INT;
+BEGIN
+    -- Obtener la cantidad disponible del producto en inventario
+    SELECT inventarios.cantidad_disponible
+    INTO cantidad_disponible
+    FROM compraya.inventarios
+    WHERE inventarios.producto_id = producto_id_input;
+
+    -- Verificar si hay suficiente cantidad
+    IF cantidad_disponible >= cantidad_solicitada THEN
+        RETURN TRUE;
+    ELSE
+        RETURN FALSE;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+
 
 ----------------------------------- Venta -----------------------------------
 
@@ -875,40 +1008,52 @@ DECLARE
     v_carrito_id INT;
     v_producto_en_carrito INT;
 BEGIN
+    -- Paso 1: Buscar el carrito asociado al usuario
     SELECT id INTO v_carrito_id
     FROM compraya.carritos
-    WHERE id = p_usuario_id AND carrito_id IS NULL; 
+    WHERE usuario_id = p_usuario_id;
 
+    -- Paso 2: Si no existe carrito para este usuario, creamos uno
     IF NOT FOUND THEN
         INSERT INTO compraya.carritos (usuario_id, cantidad, total)
         VALUES (p_usuario_id, 0, 0)
         RETURNING id INTO v_carrito_id;
     END IF;
 
+    -- Paso 3: Verificar si el producto ya está en el carrito
     SELECT COUNT(*) INTO v_producto_en_carrito
     FROM compraya.ventas
     WHERE carrito_id = v_carrito_id
     AND producto_id = p_producto_id;
 
+    -- Paso 4: Si el producto ya está en el carrito, actualizamos la cantidad
     IF v_producto_en_carrito > 0 THEN
         UPDATE compraya.ventas
         SET cantidad = cantidad + p_cantidad
         WHERE carrito_id = v_carrito_id
         AND producto_id = p_producto_id;
     ELSE
+        -- Si no está en el carrito, agregamos el producto con la cantidad
         INSERT INTO compraya.ventas (carrito_id, producto_id, cantidad)
         VALUES (v_carrito_id, p_producto_id, p_cantidad);
     END IF;
 
+    -- Paso 5: Actualizar el total del carrito
     UPDATE compraya.carritos
-    SET total = (SELECT SUM(p.precio * v.cantidad) FROM compraya.ventas v
-                 JOIN productos p ON v.producto_id = p.id
-                 WHERE v.carrito_id = v_carrito_id)
+    SET total = (
+        SELECT SUM(p.precio * v.cantidad)
+        FROM compraya.ventas v
+        JOIN compraya.productos p ON v.producto_id = p.id
+        WHERE v.carrito_id = v_carrito_id
+    )
     WHERE id = v_carrito_id;
-    
+
     COMMIT;
 END;
 $$;
+
+
+
 
 ----------Eliminar producto del carrito----------
 
@@ -1330,9 +1475,10 @@ select login_usuario(
 );
 
 select * from usuarios;
-delete from usuarios * where id = 'Abel';
+select * from productos;
+select * from inventarios;
 
-drop table   productos;
+drop table productos;
 drop table inventarios;
 drop table ventas;
 drop table historial_puntos;
