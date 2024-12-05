@@ -89,12 +89,11 @@ create table productos (
     id int primary key default nextval('productoSecuencia'),
     nombre varchar(40) unique not null,
     descripcion varchar(100),
-    precio numeric not null,
+    precio decimal not null,
     imagen varchar(100),
     descuento int,
     categoria_id int references categorias(id)
 );
-
 
 create table inventarios(
 	id int primary key default nextval('inventarioSecuencia'),
@@ -115,8 +114,6 @@ create table ventas(
 	carrito_id int references carritos(id),
 	producto_id int references productos(id)
 );
-
-
 
 create table facturas(
 	id int primary key default nextval('facturaSecuencia'),
@@ -156,7 +153,7 @@ create table informes (
 
 CREATE TABLE descuentos_dia (
     id int primary key default nextval('descuentoDia'),
-    producto_id INT REFERENCES producto(id),
+    producto_id INT REFERENCES productos(id),
     fecha_inicio DATE NOT NULL,
     fecha_fin DATE NOT NULL,
     descuento_porcentaje INT NOT NULL CHECK (descuento_porcentaje >= 0 AND descuento_porcentaje <= 100)
@@ -181,7 +178,7 @@ CREATE TABLE historial_compras (
     factura_id INT NOT NULL REFERENCES facturas(id)
 );
 
-CREATE TABLE auditoria (
+CREATE TABLE auditorias (
     id SERIAL PRIMARY KEY,
     accion VARCHAR(50) NOT NULL,
     usuario_id INT NOT NULL,
@@ -189,6 +186,8 @@ CREATE TABLE auditoria (
     fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     detalle TEXT
 );
+
+
 ----------------------------------------------------Funcionalidades----------------------------------------------------
 ----------------------------------- Usuarios -----------------------------------
 
@@ -200,7 +199,7 @@ CREATE OR REPLACE PROCEDURE crear_usuario(
     email_input VARCHAR,
     celular_input VARCHAR,
     puntos_input INT DEFAULT 0,
-    rol_input int 
+    rol_input INT DEFAULT 0 
 )
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -216,7 +215,7 @@ BEGIN
         RAISE EXCEPTION 'Error: El correo electrónico % ya está registrado.', email_input;
     END IF;
 
-    INSERT INTO usuarios (
+    INSERT INTO compraya.usuarios (
         numero_documento, nombre, contrasenia, email, celular, puntos, rol
     ) VALUES (
         numero_documento_input, nombre_input, contrasenia_input, email_input, celular_input, puntos_input, rol_input
@@ -225,6 +224,7 @@ BEGIN
     RAISE NOTICE 'Usuario creado exitosamente: %', nombre_input;
 END;
 $$;
+
 
 ----------Login----------
 
@@ -236,7 +236,7 @@ DECLARE
 BEGIN
     SELECT contrasenia, numero_documento
     INTO contrasenia_actual, numero_documento_actual
-    FROM usuarios
+    FROM compraya.usuarios
     WHERE email = email_input;
 
     IF contrasenia_actual IS NULL THEN
@@ -244,7 +244,7 @@ BEGIN
     END IF;
 
     IF contrasenia_actual = contrasenia_input THEN
-        CALL establecer_sesion(numero_documento_actual);
+        CALL compraya.establecer_sesion(numero_documento_actual);
 
         RETURN numero_documento_actual;
     ELSE
@@ -291,7 +291,7 @@ DECLARE
     rol_usuario INT;
 BEGIN
     SELECT rol INTO rol_usuario
-    FROM usuarios
+    FROM compraya.usuarios
     WHERE numero_documento = current_setting('app.numero_documento', TRUE);
 
     RETURN rol_usuario;
@@ -331,20 +331,20 @@ BEGIN
     END IF;
 
     IF numero_documento_input IS NOT NULL AND EXISTS (
-        SELECT 1 FROM compraya.usuario 
+        SELECT 1 FROM compraya.usuarios 
         WHERE numero_documento = numero_documento_input AND id != usuario_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El número de documento % ya está registrado para otro usuario.', numero_documento_input;
     END IF;
 
     IF email_input IS NOT NULL AND EXISTS (
-        SELECT 1 FROM compraya.usuario 
+        SELECT 1 FROM compraya.usuarios 
         WHERE email = email_input AND id != usuario_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El correo electrónico % ya está registrado para otro usuario.', email_input;
     END IF;
 
-    UPDATE compraya.usuario
+    UPDATE compraya.usuarios
     SET 
         numero_documento = COALESCE(numero_documento_input, numero_documento),
         nombre = COALESCE(nombre_input, nombre),
@@ -366,12 +366,12 @@ CREATE OR REPLACE PROCEDURE eliminar_usuario(usuario_id_input INT)
 LANGUAGE plpgsql AS $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM usuario WHERE id = usuario_id_input
+        SELECT 1 FROM compraya.usuarios WHERE id = usuario_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El usuario con ID % no existe.', usuario_id_input;
     END IF;
 
-    DELETE FROM usuario
+    DELETE FROM compraya.usuarios
     WHERE id = usuario_id_input;
 
     RAISE NOTICE 'Usuario con ID % eliminado exitosamente.', usuario_id_input;
@@ -387,7 +387,7 @@ DECLARE
 BEGIN
     FOR usuario_record IN 
         SELECT id, numero_documento, nombre, email, celular, puntos
-        FROM usuario
+        FROM compraya.usuarios
     LOOP
         RAISE NOTICE 'ID: %, Documento: %, Nombre: %, Email: %, Celular: %, Puntos: %',
             usuario_record.id,
@@ -409,34 +409,34 @@ $$;
 CREATE OR REPLACE PROCEDURE crear_producto(
     nombre_input VARCHAR,
     descripcion_input VARCHAR,
-    precio_input NUMERIC,
+    precio_input decimal,
     imagen_input VARCHAR,
     descuento_input INT,
     categoria_id_input INT
 )
 LANGUAGE plpgsql AS $$
 BEGIN
-    IF NOT es_usuario_logueado() THEN
+    IF NOT compraya.es_usuario_logueado() THEN
         RAISE EXCEPTION 'Error: No hay un usuario logueado.';
     END IF;
 
-    IF obtener_rol_usuario() != 1 THEN
+    IF compraya.obtener_rol_usuario() != 1 THEN
         RAISE EXCEPTION 'Error: No tienes permisos para crear productos.';
     END IF;
 
     IF EXISTS (
-        SELECT 1 FROM productos WHERE nombre = nombre_input
+        SELECT 1 FROM compraya.productos WHERE nombre = nombre_input
     ) THEN
         RAISE EXCEPTION 'Error: El producto con nombre % ya está registrado.', nombre_input;
     END IF;
 
     IF NOT EXISTS (
-        SELECT 1 FROM categorias WHERE id = categoria_id_input
+        SELECT 1 FROM compraya.ategorias WHERE id = categoria_id_input
     ) THEN
         RAISE EXCEPTION 'Error: La categoría con ID % no existe.', categoria_id_input;
     END IF;
 
-    INSERT INTO productos (
+    INSERT INTO compraya.productos (
         nombre, descripcion, precio, imagen, descuento, categoria_id
     ) VALUES (
         nombre_input, descripcion_input, precio_input, imagen_input, descuento_input, categoria_id_input
@@ -469,18 +469,18 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (
-        SELECT 1 FROM productos WHERE id = producto_id_input
+        SELECT 1 FROM compraya.productos WHERE id = producto_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El producto con ID % no existe.', producto_id_input;
     END IF;
 
     IF categoria_id_input IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM categorias WHERE id = categoria_id_input
+        SELECT 1 FROM compraya.categorias WHERE id = categoria_id_input
     ) THEN
         RAISE EXCEPTION 'Error: La categoría con ID % no existe.', categoria_id_input;
     END IF;
 
-    UPDATE productos
+    UPDATE compraya.productos
     SET
         nombre = COALESCE(nombre_input, nombre),
         descripcion = COALESCE(descripcion_input, descripcion),
@@ -509,12 +509,12 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (
-        SELECT 1 FROM productos WHERE id = producto_id_input
+        SELECT 1 FROM compraya.productos WHERE id = producto_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El producto con ID % no existe.', producto_id_input;
     END IF;
 
-    DELETE FROM productos
+    DELETE FROM compraya.productos
     WHERE id = producto_id_input;
 
     RAISE NOTICE 'Producto con ID % eliminado exitosamente.', producto_id_input;
@@ -531,7 +531,7 @@ DECLARE
 BEGIN
     FOR producto_record IN 
         SELECT id, nombre, descripcion, precio, imagen, descuento, categoria_id
-        FROM producto
+        FROM compraya.productos
     LOOP
         RAISE NOTICE 'ID: %, Nombre: %, Descripción: %, Precio: %, Imagen: %, Descuento: %, Categoría ID: %',
             producto_record.id,
@@ -567,7 +567,7 @@ BEGIN
     RETURN QUERY
     SELECT
         p.id, p.nombre, p.descripcion, p.precio, p.imagen, p.descuento, p.categoria_id
-    FROM producto p
+    FROM compraya.productos p
     WHERE 
         (categoria_id_input IS NULL OR p.categoria_id = categoria_id_input) AND
         (precio_min IS NULL OR p.precio >= precio_min) AND
@@ -590,7 +590,7 @@ CREATE OR REPLACE PROCEDURE agregar_descuento_dia(
 LANGUAGE plpgsql AS $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM producto WHERE id = producto_id_input
+        SELECT 1 FROM compraya.productos WHERE id = producto_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El producto con ID % no existe.', producto_id_input;
     END IF;
@@ -599,7 +599,7 @@ BEGIN
         RAISE EXCEPTION 'Error: La fecha de inicio no puede ser mayor que la fecha de fin.';
     END IF;
 
-    INSERT INTO descuento_dia (producto_id, fecha_inicio, fecha_fin, descuento_porcentaje)
+    INSERT INTO compraya.descuentos_dia (producto_id, fecha_inicio, fecha_fin, descuento_porcentaje)
     VALUES (producto_id_input, fecha_inicio_input, fecha_fin_input, descuento_porcentaje_input);
 
     RAISE NOTICE 'Descuento del % % agregado para el producto con ID % entre % y %.',
@@ -628,7 +628,7 @@ BEGIN
         p.precio AS precio_original,
         p.precio - (p.precio * d.descuento_porcentaje / 100) AS precio_descuento,
         d.descuento_porcentaje AS descuento_aplicado
-    FROM producto p
+    FROM compraya.productos p
     JOIN descuento_dia d ON p.id = d.producto_id
     WHERE fecha_actual BETWEEN d.fecha_inicio AND d.fecha_fin;
 END;
@@ -649,7 +649,7 @@ BEGIN
         p.nombre,
         COUNT(v.producto_id) AS cantidad_vendida
     FROM 
-        producto p
+        compraya.productos p
     JOIN 
         venta v ON p.id = v.producto_id
     GROUP BY 
@@ -677,7 +677,7 @@ BEGIN
         RAISE EXCEPTION 'El producto con ID % no existe.', p_producto_id;
     END IF;
 
-    INSERT INTO venta (carrito_id, producto_id)
+    INSERT INTO compraya.ventas (carrito_id, producto_id)
     VALUES (p_carrito_id, p_producto_id);
 END;
 $$;
@@ -704,7 +704,7 @@ BEGIN
         RAISE EXCEPTION 'El producto con ID % no existe.', p_producto_id;
     END IF;
 
-    UPDATE venta
+    UPDATE compraya.ventas
     SET carrito_id = p_carrito_id,
         producto_id = p_producto_id
     WHERE id = p_venta_id;
@@ -723,7 +723,7 @@ BEGIN
         RAISE EXCEPTION 'La venta con ID % no existe.', p_venta_id;
     END IF;
 
-    DELETE FROM venta WHERE id = p_venta_id;
+    DELETE FROM compraya.ventas WHERE id = p_venta_id;
 END;
 $$;
 
@@ -744,7 +744,7 @@ BEGIN
         v.producto_id,
         p.nombre AS producto_nombre
     FROM 
-        venta v
+        compraya.ventas v
     JOIN 
         producto p ON v.producto_id = p.id
     WHERE 
@@ -764,7 +764,7 @@ DECLARE
     total NUMERIC;
 BEGIN
     SELECT * INTO nuevo_carrito 
-    FROM carrito 
+    FROM compraya.carritos 
     WHERE id = NEW.carrito_id;
 
     IF nuevo_carrito IS NULL THEN
@@ -775,7 +775,7 @@ BEGIN
     impuesto := subtotal * 0.19; 
     total := subtotal + impuesto;
 
-    INSERT INTO factura (
+    INSERT INTO compraya.facturas (
         codigo, 
         fecha, 
         subtotal, 
@@ -791,7 +791,7 @@ BEGIN
         total,
         impuesto,
         'pendiente',
-        (SELECT cliente_id FROM carrito WHERE id = NEW.carrito_id), 
+        (SELECT cliente_id FROM compraya.carritos WHERE id = NEW.carrito_id), 
         NEW.carrito_id
     );
 
@@ -814,12 +814,12 @@ DECLARE
 BEGIN
     -- Obtener el total de la venta
     SELECT total INTO total_venta
-    FROM facturas
+    FROM compraya.facturas
     WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input);
 
     -- Obtener los puntos disponibles del usuario
     SELECT puntos INTO puntos_usuario
-    FROM usuarios
+    FROM compraya.usuarios
     WHERE id = (SELECT cliente_id FROM facturas WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input));
 
     -- Validar el pago según el tipo
@@ -845,13 +845,13 @@ BEGIN
 
     -- Actualizar los puntos del usuario (si se usan puntos)
     IF puntos_usados_input > 0 THEN
-        UPDATE usuarios
+        UPDATE compraya.usuarios
         SET puntos = puntos - puntos_usados_input
         WHERE id = (SELECT cliente_id FROM facturas WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input));
     END IF;
 
     -- Actualizar el estado de la factura a "pagado"
-    UPDATE facturas
+    UPDATE compraya.facturas
     SET estado = 'pagado'
     WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input);
 
@@ -876,32 +876,32 @@ DECLARE
     v_producto_en_carrito INT;
 BEGIN
     SELECT id INTO v_carrito_id
-    FROM carritos
+    FROM compraya.carritos
     WHERE id = p_usuario_id AND carrito_id IS NULL; 
 
     IF NOT FOUND THEN
-        INSERT INTO carritos (usuario_id, cantidad, total)
+        INSERT INTO compraya.carritos (usuario_id, cantidad, total)
         VALUES (p_usuario_id, 0, 0)
         RETURNING id INTO v_carrito_id;
     END IF;
 
     SELECT COUNT(*) INTO v_producto_en_carrito
-    FROM ventas
+    FROM compraya.ventas
     WHERE carrito_id = v_carrito_id
     AND producto_id = p_producto_id;
 
     IF v_producto_en_carrito > 0 THEN
-        UPDATE ventas
+        UPDATE compraya.ventas
         SET cantidad = cantidad + p_cantidad
         WHERE carrito_id = v_carrito_id
         AND producto_id = p_producto_id;
     ELSE
-        INSERT INTO ventas (carrito_id, producto_id, cantidad)
+        INSERT INTO compraya.ventas (carrito_id, producto_id, cantidad)
         VALUES (v_carrito_id, p_producto_id, p_cantidad);
     END IF;
 
-    UPDATE carritos
-    SET total = (SELECT SUM(p.precio * v.cantidad) FROM ventas v
+    UPDATE compraya.carritos
+    SET total = (SELECT SUM(p.precio * v.cantidad) FROM compraya.ventas v
                  JOIN productos p ON v.producto_id = p.id
                  WHERE v.carrito_id = v_carrito_id)
     WHERE id = v_carrito_id;
@@ -919,12 +919,12 @@ CREATE OR REPLACE PROCEDURE eliminar_producto_del_carrito(
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    DELETE FROM ventas
+    DELETE FROM compraya.ventas
     WHERE carrito_id = p_carrito_id
     AND producto_id = p_producto_id;
 
-    UPDATE carritos
-    SET total = (SELECT SUM(p.precio * v.cantidad) FROM ventas v
+    UPDATE compraya.carritos
+    SET total = (SELECT SUM(p.precio * v.cantidad) FROM compraya.ventas v
                  JOIN productos p ON v.producto_id = p.id
                  WHERE v.carrito_id = p_carrito_id)
     WHERE id = p_carrito_id;
@@ -942,7 +942,7 @@ RETURNS TABLE(producto_nombre VARCHAR, cantidad INT, total_producto NUMERIC) AS 
 BEGIN
     RETURN QUERY
     SELECT p.nombre, v.cantidad, p.precio * v.cantidad
-    FROM ventas v
+    FROM compraya.ventas v
     JOIN productos p ON v.producto_id = p.id
     WHERE v.carrito_id = p_carrito_id;
 END;
@@ -956,9 +956,9 @@ CREATE OR REPLACE PROCEDURE vaciar_carrito(
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    DELETE FROM ventas WHERE carrito_id = p_carrito_id;
+    DELETE FROM compraya.ventas WHERE carrito_id = p_carrito_id;
 
-    UPDATE carritos
+    UPDATE compraya.carritos
     SET total = 0
     WHERE id = p_carrito_id;
 
@@ -973,7 +973,7 @@ $$;
 CREATE OR REPLACE FUNCTION trigger_historial_puntos()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO historial_puntos (usuario_id, cantidad, fecha, motivo, venta_id)
+    INSERT INTO compraya.historial_puntos (usuario_id, cantidad, fecha, motivo, venta_id)
     VALUES (
         NEW.usuario_id,
         NEW.cantidad,
@@ -991,7 +991,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION trigger_historial_compras()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO historial_compras (cliente_id, fecha, total_efectivo, puntos_redimidos, carrito_id, factura_id)
+    INSERT INTO compraya.historial_compras (cliente_id, fecha, total_efectivo, puntos_redimidos, carrito_id, factura_id)
     VALUES (
         NEW.cliente_id,
         NEW.fecha,
@@ -1023,7 +1023,7 @@ BEGIN
         hc.puntos_redimidos,
         COALESCE(pg.cantidad, 0) AS puntos_acumulados,
         pg.motivo
-    FROM historial_compras hc
+    FROM compraya.historial_compras hc
     LEFT JOIN historial_puntos pg ON hc.cliente_id = pg.usuario_id AND hc.factura_id = pg.venta_id
     WHERE hc.cliente_id = usuario_id_input
     ORDER BY hc.fecha DESC;
@@ -1037,7 +1037,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION registrar_auditoria_factura()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO auditoria (accion, usuario_id, factura_id, detalle)
+    INSERT INTO compraya.auditorias (accion, usuario_id, factura_id, detalle)
     VALUES (
         'CREACIÓN DE FACTURA', 
         NEW.cliente_id,  -- Asumiendo que cliente_id es el usuario que crea la factura
@@ -1075,7 +1075,7 @@ BEGIN
         a.detalle,
         u.nombre AS nombre_usuario,
         p.nombre AS nombre_producto
-    FROM auditoria a
+    FROM compraya.auditorias a
     LEFT JOIN usuarios u ON a.usuario_id = u.id
     LEFT JOIN facturas f ON a.factura_id = f.id
     LEFT JOIN ventas v ON f.carrito_id = v.carrito_id
@@ -1091,31 +1091,31 @@ $$ LANGUAGE plpgsql;
 ----------Triggers----------
 ----Trigger 1----
 CREATE TRIGGER crear_factura_tras_venta
-AFTER INSERT ON venta
+AFTER INSERT ON compraya.ventas
 FOR EACH ROW
 EXECUTE FUNCTION generar_factura_venta();
 
 ----Punto 13----
 CREATE TRIGGER trigger_puntos_ganados
-AFTER INSERT ON puntos_ganados
+AFTER INSERT ON compraya.puntos_ganados
 FOR EACH ROW
 EXECUTE FUNCTION trigger_historial_puntos();
 
 CREATE TRIGGER trigger_puntos_redimidos
-AFTER INSERT ON puntos_redimidos
+AFTER INSERT ON compraya.puntos_redimidos
 FOR EACH ROW
 EXECUTE FUNCTION trigger_historial_puntos();
 
 ----Punto 15----
 
 CREATE TRIGGER trigger_facturas
-AFTER INSERT ON facturas
+AFTER INSERT ON compraya.facturas
 FOR EACH ROW
 EXECUTE FUNCTION trigger_historial_compras();
 
 ----Punto 18----
 CREATE TRIGGER trigger_auditoria_factura
-AFTER INSERT ON facturas
+AFTER INSERT ON compraya.facturas
 FOR EACH ROW
 EXECUTE FUNCTION registrar_auditoria_factura();
 
@@ -1136,7 +1136,7 @@ BEGIN
     -- Obtener los datos de la factura
     SELECT f.codigo, f.fecha, f.subtotal, f.total, f.impuesto, f.estado, u.nombre
     INTO v_factura
-    FROM facturas f
+    FROM compraya.facturas f
     JOIN usuarios u ON f.cliente_id = u.id
     WHERE f.id = p_factura_id;
 
@@ -1157,7 +1157,7 @@ BEGIN
     -- Obtener los productos asociados a la factura
     FOR v_productos IN
         SELECT p.nombre, v.cantidad, p.precio, (p.precio * v.cantidad) AS total_producto
-        FROM ventas v
+        FROM compraya.ventas v
         JOIN productos p ON v.producto_id = p.id
         WHERE v.carrito_id = (SELECT carrito_id FROM facturas WHERE id = p_factura_id)
     LOOP
@@ -1328,5 +1328,16 @@ select login_usuario(
 	'pedro.ramirez@gmail.com',
 	'password10'
 );
+
+select * from usuarios;
+delete from usuarios * where id = 'Abel';
+
+drop table   productos;
+drop table inventarios;
+drop table ventas;
+drop table historial_puntos;
+drop table descuentos_dia;
+
+call establecer_sesion('12345');
 
 
