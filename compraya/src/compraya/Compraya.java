@@ -33,7 +33,7 @@ public class Compraya {
     public static void main(String[] args) {
         try {
             initConnection();
-            login();
+            
             
             //mostrarMenu();
             //crearProducto("Papas 2", "Papas", new BigDecimal(10000), "imagen.jpg", 10, 1);
@@ -48,16 +48,17 @@ public class Compraya {
             //obtener_productos_descuento(fechaActual);
       
             // Llamar a la función para generar el XML de una factura
-            int facturaId = 1; // Cambia este valor según el ID de la factura
-            String facturaXML = obtenerFacturaXML(facturaId);
-
-            // Verificar y formatear el XML
-            if (facturaXML != null) {
-                String xmlBonito = formatearXML(facturaXML);
-                System.out.println(xmlBonito); // Mostrar el XML formateado
-            } else {
-                System.out.println("No se pudo generar el XML para la factura con ID " + facturaId);
-            }
+            //            int facturaId = 1; // Cambia este valor según el ID de la factura
+            //            String facturaXML = obtenerFacturaXML(facturaId);
+            //
+            //            // Verificar y formatear el XML
+            //            if (facturaXML != null) {
+            //                String xmlBonito = formatearXML(facturaXML);
+            //                System.out.println(xmlBonito); // Mostrar el XML formateado
+            //            } else {
+            //                System.out.println("No se pudo generar el XML para la factura con ID " + facturaId);
+            //            }
+        obtenerTodosLosProductos();
         } catch (Exception e) {
             System.err.println("Error en la aplicacion: " + e.getMessage());
         } finally {
@@ -164,256 +165,290 @@ public class Compraya {
 
 
     public static void crearProducto() {
-    Scanner scanner = new Scanner(System.in);
-    
-    // Solicitar los parámetros al usuario
-    System.out.print("Ingrese el nombre del producto: ");
-    String nombre = scanner.nextLine();
-    
-    System.out.print("Ingrese la descripción del producto: ");
-    String descripcion = scanner.nextLine();
-    
-    System.out.print("Ingrese el precio del producto: ");
-    BigDecimal precio = scanner.nextBigDecimal();
-    
-    scanner.nextLine();  // Consumir la nueva línea pendiente
-    
-    System.out.print("Ingrese la imagen del producto: ");
-    String imagen = scanner.nextLine();
-    
-    System.out.print("Ingrese el descuento del producto: ");
-    int descuento = scanner.nextInt();
-    
-    System.out.print("Ingrese el ID de la categoría: ");
-    int categoriaId = scanner.nextInt();
-    
-    CallableStatement stmt = null;
-    try {
-        stmt = conexion.prepareCall("CALL compraya.crear_producto(?, ?, CAST(? AS numeric), ?, ?, ?)");
+        login();
+        Scanner scanner = new Scanner(System.in);
 
-        // Establecer los parámetros del procedimiento
-        stmt.setString(1, nombre);
-        stmt.setString(2, descripcion);
-        stmt.setBigDecimal(3, precio);  // Cambiar a setBigDecimal
-        stmt.setString(4, imagen);
-        stmt.setInt(5, descuento);
-        stmt.setInt(6, categoriaId);
+        // Solicitar los parámetros al usuario
+        System.out.print("Ingrese el nombre del producto: ");
+        String nombre = scanner.nextLine();
 
-        stmt.execute();
-        System.out.println("Producto creado exitosamente.");
+        System.out.print("Ingrese la descripción del producto: ");
+        String descripcion = scanner.nextLine();
 
-    } catch (SQLException e) {
-        System.err.println("Error al crear el producto: " + e.getMessage());
-    } finally {
+        System.out.print("Ingrese el precio del producto: ");
+        BigDecimal precio = scanner.nextBigDecimal();
+
+        scanner.nextLine();  // Consumir la nueva línea pendiente
+
+        System.out.print("Ingrese la imagen del producto: ");
+        String imagen = scanner.nextLine();
+
+        System.out.print("Ingrese el descuento del producto: ");
+        int descuento = scanner.nextInt();
+
+        System.out.print("Ingrese el ID de la categoría: ");
+        int categoriaId = scanner.nextInt();
+
+        CallableStatement stmt = null;
         try {
-            if (stmt != null) stmt.close();
-            if (conexion != null) conexion.close();
+            stmt = conexion.prepareCall("CALL compraya.crear_producto(?, ?, CAST(? AS numeric), ?, ?, ?)");
+
+            // Establecer los parámetros del procedimiento
+            stmt.setString(1, nombre);
+            stmt.setString(2, descripcion);
+            stmt.setBigDecimal(3, precio);  // Cambiar a setBigDecimal
+            stmt.setString(4, imagen);
+            stmt.setInt(5, descuento);
+            stmt.setInt(6, categoriaId);
+
+            stmt.execute();
+            System.out.println("Producto creado exitosamente.");
+
         } catch (SQLException e) {
-            System.err.println("Error al cerrar la conexión: " + e.getMessage());
+            System.err.println("Error al crear el producto: " + e.getMessage());
+        } finally {
+            try {
+                if (stmt != null) stmt.close();
+                if (conexion != null) conexion.close();
+            } catch (SQLException e) {
+                System.err.println("Error al cerrar la conexión: " + e.getMessage());
+            }
         }
     }
-}
     
-     public static void modificarProducto() {
-    Scanner scanner = new Scanner(System.in);
+    public static void modificarProducto() {
+        login();
+        Scanner scanner = new Scanner(System.in);
 
-    // Solicitar los parámetros al usuario
-    System.out.print("Ingrese el ID del producto a modificar: ");
-    int productoId = scanner.nextInt();
-    
-    scanner.nextLine();  // Consumir la nueva línea pendiente
-    
-    System.out.print("Ingrese el nuevo nombre del producto (o deje vacío para no modificarlo): ");
-    String nombre = scanner.nextLine();
-    
-    System.out.print("Ingrese la nueva descripción del producto (o deje vacío para no modificarlo): ");
-    String descripcion = scanner.nextLine();
-    
-    System.out.print("Ingrese el nuevo precio del producto (o deje vacío para no modificarlo): ");
-    Double precio = scanner.hasNextDouble() ? scanner.nextDouble() : null;
-    
-    scanner.nextLine();  // Consumir la nueva línea pendiente
-    
-    System.out.print("Ingrese la nueva imagen del producto (o deje vacío para no modificarlo): ");
-    String imagen = scanner.nextLine();
-    
-    System.out.print("Ingrese el nuevo descuento del producto (o deje vacío para no modificarlo): ");
-    Integer descuento = scanner.hasNextInt() ? scanner.nextInt() : null;
-    
-    System.out.print("Ingrese el nuevo ID de categoría (o deje vacío para no modificarlo): ");
-    Integer categoriaId = scanner.hasNextInt() ? scanner.nextInt() : null;
-    
-    CallableStatement stmt = null;
-    try {
-        stmt = conexion.prepareCall("CALL compraya.modificar_producto(?,?, ?, CAST(? AS numeric), ?, ?, ?)");
+        // Solicitar los parámetros al usuario
+        System.out.print("Ingrese el ID del producto a modificar: ");
+        int productoId = scanner.nextInt();
 
-        stmt.setInt(1, productoId);
-        
-        if (nombre != null && !nombre.isEmpty()) {
-            stmt.setString(2, nombre);
-        } else {
-            stmt.setNull(2, java.sql.Types.VARCHAR);
-        }
-        
-        if (descripcion != null && !descripcion.isEmpty()) {
-            stmt.setString(3, descripcion);
-        } else {
-            stmt.setNull(3, java.sql.Types.VARCHAR);
-        }
-        
-        if (precio != null) {
-            stmt.setBigDecimal(4, new BigDecimal(precio));
-        } else {
-            stmt.setNull(4, java.sql.Types.DOUBLE);
-        }
-        
-        if (imagen != null && !imagen.isEmpty()) {
-            stmt.setString(5, imagen);
-        } else {
-            stmt.setNull(5, java.sql.Types.VARCHAR);
-        }
-        
-        if (descuento != null) {
-            stmt.setInt(6, descuento);
-        } else {
-            stmt.setNull(6, java.sql.Types.INTEGER);
-        }
-        
-        if (categoriaId != null) {
-            stmt.setInt(7, categoriaId);
-        } else {
-            stmt.setNull(7, java.sql.Types.INTEGER);
-        }
+        scanner.nextLine();  // Consumir la nueva línea pendiente
 
-        stmt.execute();
-        System.out.println("Producto con ID " + productoId + " modificado exitosamente.");
+        System.out.print("Ingrese el nuevo nombre del producto (o deje vacío para no modificarlo): ");
+        String nombre = scanner.nextLine();
 
-    } catch (SQLException e) {
-        System.err.println("Error al modificar el producto: " + e.getMessage());
-    } finally {
+        System.out.print("Ingrese la nueva descripción del producto (o deje vacío para no modificarlo): ");
+        String descripcion = scanner.nextLine();
+
+        System.out.print("Ingrese el nuevo precio del producto (o deje vacío para no modificarlo): ");
+        Double precio = scanner.hasNextDouble() ? scanner.nextDouble() : null;
+
+        scanner.nextLine();  // Consumir la nueva línea pendiente
+
+        System.out.print("Ingrese la nueva imagen del producto (o deje vacío para no modificarlo): ");
+        String imagen = scanner.nextLine();
+
+        System.out.print("Ingrese el nuevo descuento del producto (o deje vacío para no modificarlo): ");
+        Integer descuento = scanner.hasNextInt() ? scanner.nextInt() : null;
+
+        System.out.print("Ingrese el nuevo ID de categoría (o deje vacío para no modificarlo): ");
+        Integer categoriaId = scanner.hasNextInt() ? scanner.nextInt() : null;
+
+        CallableStatement stmt = null;
         try {
-            if (stmt != null) stmt.close();
-            if (conexion != null) conexion.close();
+            stmt = conexion.prepareCall("CALL compraya.modificar_producto(?,?, ?, CAST(? AS numeric), ?, ?, ?)");
+
+            stmt.setInt(1, productoId);
+
+            if (nombre != null && !nombre.isEmpty()) {
+                stmt.setString(2, nombre);
+            } else {
+                stmt.setNull(2, java.sql.Types.VARCHAR);
+            }
+
+            if (descripcion != null && !descripcion.isEmpty()) {
+                stmt.setString(3, descripcion);
+            } else {
+                stmt.setNull(3, java.sql.Types.VARCHAR);
+            }
+
+            if (precio != null) {
+                stmt.setBigDecimal(4, new BigDecimal(precio));
+            } else {
+                stmt.setNull(4, java.sql.Types.DOUBLE);
+            }
+
+            if (imagen != null && !imagen.isEmpty()) {
+                stmt.setString(5, imagen);
+            } else {
+                stmt.setNull(5, java.sql.Types.VARCHAR);
+            }
+
+            if (descuento != null) {
+                stmt.setInt(6, descuento);
+            } else {
+                stmt.setNull(6, java.sql.Types.INTEGER);
+            }
+
+            if (categoriaId != null) {
+                stmt.setInt(7, categoriaId);
+            } else {
+                stmt.setNull(7, java.sql.Types.INTEGER);
+            }
+
+            stmt.execute();
+            System.out.println("Producto con ID " + productoId + " modificado exitosamente.");
+
         } catch (SQLException e) {
-            System.err.println("Error al cerrar la conexión: " + e.getMessage());
+            System.err.println("Error al modificar el producto: " + e.getMessage());
+        } finally {
+            try {
+                if (stmt != null) stmt.close();
+                if (conexion != null) conexion.close();
+            } catch (SQLException e) {
+                System.err.println("Error al cerrar la conexión: " + e.getMessage());
+            }
         }
     }
-}
      
-        public static void eliminarProducto() {
-    Scanner scanner = new Scanner(System.in);
+    public static void eliminarProducto() {
+        login();
+        Scanner scanner = new Scanner(System.in);
 
-    // Solicitar el ID del producto a eliminar
-    System.out.print("Ingrese el ID del producto a eliminar: ");
-    int productoId = scanner.nextInt();
+        // Solicitar el ID del producto a eliminar
+        System.out.print("Ingrese el ID del producto a eliminar: ");
+        int productoId = scanner.nextInt();
 
-    CallableStatement stmt = null;
-    try {
-        stmt = conexion.prepareCall("CALL compraya.eliminar_producto(?)");
-
-        // Establecer el parámetro del procedimiento
-        stmt.setInt(1, productoId);
-
-        stmt.execute();
-        System.out.println("Producto eliminado exitosamente.");
-
-    } catch (SQLException e) {
-        System.err.println("Error al eliminar el producto: " + e.getMessage());
-    } finally {
+        CallableStatement stmt = null;
         try {
-            if (stmt != null) stmt.close();
-            if (conexion != null) conexion.close();
+            stmt = conexion.prepareCall("CALL compraya.eliminar_producto(?)");
+
+            // Establecer el parámetro del procedimiento
+            stmt.setInt(1, productoId);
+
+            stmt.execute();
+            System.out.println("Producto eliminado exitosamente.");
+
         } catch (SQLException e) {
-            System.err.println("Error al cerrar la conexión: " + e.getMessage());
+            System.err.println("Error al eliminar el producto: " + e.getMessage());
+        } finally {
+            try {
+                if (stmt != null) stmt.close();
+                if (conexion != null) conexion.close();
+            } catch (SQLException e) {
+                System.err.println("Error al cerrar la conexión: " + e.getMessage());
+            }
+        }
+    }   
+        
+    public static void obtenerTodosLosProductos() {
+        login();
+        CallableStatement stmt = null;
+        try 
+            {
+             stmt = conexion.prepareCall("SELECT * FROM compraya.obtener_todos_los_productos()");
+             ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                int id = rs.getInt("id");
+                String nombre = rs.getString("nombre");
+                String descripcion = rs.getString("descripcion");
+                BigDecimal precio = rs.getBigDecimal("precio");
+                String imagen = rs.getString("imagen");
+                BigDecimal descuento = rs.getBigDecimal("descuento");
+                int categoriaId = rs.getInt("categoria_id");
+
+                System.out.println("ID: " + id +
+                                   ", Nombre: " + nombre +
+                                   ", Descripción: " + descripcion +
+                                   ", Precio: " + precio +
+                                   ", Imagen: " + imagen +
+                                   ", Descuento: " + descuento +
+                                   ", Categoría ID: " + categoriaId);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error al obtener productos: " + e.getMessage());
         }
     }
-}   
      
    public static void filtrar_productos() {
-    Scanner scanner = new Scanner(System.in);
+        login();
+        Scanner scanner = new Scanner(System.in);
 
-    // Solicitar los parámetros al usuario
-    System.out.print("Ingrese el ID de categoría: ");
-    int categoriaId = scanner.nextInt();
-    
-    System.out.print("Ingrese el precio mínimo: ");
-    BigDecimal precioMin = scanner.nextBigDecimal();
-    
-    System.out.print("Ingrese el precio máximo: ");
-    BigDecimal precioMax = scanner.nextBigDecimal();
-    
-    System.out.print("Ingrese el descuento mínimo: ");
-    int descuentoMin = scanner.nextInt();
-    
-    System.out.print("Ingrese el descuento máximo: ");
-    int descuentoMax = scanner.nextInt();
-    
-    CallableStatement stmt = null;
-    try {
-        stmt = conexion.prepareCall("SELECT * FROM compraya.filtrar_productos(?, CAST(? AS numeric), CAST(? AS numeric), ?, ?)");
-        
-        // Asignar los parámetros
-        stmt.setInt(1, categoriaId);
-        stmt.setBigDecimal(2, precioMin);
-        stmt.setBigDecimal(3, precioMax);
-        stmt.setInt(4, descuentoMin);
-        stmt.setInt(5, descuentoMax);
-        
-        // Ejecutar la consulta
-        try (ResultSet rs = stmt.executeQuery()) {
-            while (rs.next()) {
-                // Imprimir los resultados
-                System.out.println("ID: " + rs.getInt("id") +
-                        ", Nombre: " + rs.getString("nombre") +
-                        ", Descripción: " + rs.getString("descripcion") +
-                        ", Precio: " + rs.getBigDecimal("precio") +
-                        ", Imagen: " + rs.getString("imagen") +
-                        ", Descuento: " + rs.getInt("descuento") +
-                        ", Categoría ID: " + rs.getInt("categoria_id"));
+        // Solicitar los parámetros al usuario
+        System.out.print("Ingrese el ID de categoría: ");
+        int categoriaId = scanner.nextInt();
+
+        System.out.print("Ingrese el precio mínimo: ");
+        BigDecimal precioMin = scanner.nextBigDecimal();
+
+        System.out.print("Ingrese el precio máximo: ");
+        BigDecimal precioMax = scanner.nextBigDecimal();
+
+        System.out.print("Ingrese el descuento mínimo: ");
+        int descuentoMin = scanner.nextInt();
+
+        System.out.print("Ingrese el descuento máximo: ");
+        int descuentoMax = scanner.nextInt();
+
+        CallableStatement stmt = null;
+        try {
+            stmt = conexion.prepareCall("SELECT * FROM compraya.filtrar_productos(?, CAST(? AS numeric), CAST(? AS numeric), ?, ?)");
+
+            // Asignar los parámetros
+            stmt.setInt(1, categoriaId);
+            stmt.setBigDecimal(2, precioMin);
+            stmt.setBigDecimal(3, precioMax);
+            stmt.setInt(4, descuentoMin);
+            stmt.setInt(5, descuentoMax);
+
+            // Ejecutar la consulta
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    // Imprimir los resultados
+                    System.out.println("ID: " + rs.getInt("id") +
+                            ", Nombre: " + rs.getString("nombre") +
+                            ", Descripción: " + rs.getString("descripcion") +
+                            ", Precio: " + rs.getBigDecimal("precio") +
+                            ", Imagen: " + rs.getString("imagen") +
+                            ", Descuento: " + rs.getInt("descuento") +
+                            ", Categoría ID: " + rs.getInt("categoria_id"));
+                }
             }
+
+        } catch (SQLException e) {
+            System.err.println("Error al filtrar productos: " + e.getMessage());
         }
-
-    } catch (SQLException e) {
-        System.err.println("Error al filtrar productos: " + e.getMessage());
     }
-}
     
     
-public static void obtener_productos_descuento() {
-    Scanner scanner = new Scanner(System.in);
+    public static void obtener_productos_descuento() {
+        login();
+        Scanner scanner = new Scanner(System.in);
 
-    // Solicitar la fecha actual al usuario
-    System.out.print("Ingrese la fecha actual (en formato yyyy-mm-dd): ");
-    String fechaStr = scanner.nextLine();
-    Date fechaActual = Date.valueOf(fechaStr);  // Convertir la cadena a Date
+        // Solicitar la fecha actual al usuario
+        System.out.print("Ingrese la fecha actual (en formato yyyy-mm-dd): ");
+        String fechaStr = scanner.nextLine();
+        Date fechaActual = Date.valueOf(fechaStr);  // Convertir la cadena a Date
 
-    CallableStatement stmt = null;
-    try {
-        // Preparar la llamada a la función almacenada
-        stmt = conexion.prepareCall("SELECT * FROM compraya.obtener_productos_descuento(?)");
-        stmt.setDate(1, fechaActual); // Pasar la fecha como java.sql.Date
+        CallableStatement stmt = null;
+        try {
+            // Preparar la llamada a la función almacenada
+            stmt = conexion.prepareCall("SELECT * FROM compraya.obtener_productos_descuento(?)");
+            stmt.setDate(1, fechaActual); // Pasar la fecha como java.sql.Date
 
-        // Ejecutar la consulta
-        try (ResultSet rs = stmt.executeQuery()) {
-            boolean found = false; // Verificar si hay resultados
-            while (rs.next()) {
-                found = true; // Se encontraron resultados
-                // Imprimir los resultados
-                System.out.println("ID: " + rs.getInt("id") +
-                        ", Nombre: " + rs.getString("nombre") +
-                        ", Descripción: " + rs.getString("descripcion") +
-                        ", Precio Original: " + rs.getBigDecimal("precio_original") +
-                        ", Precio con Descuento: " + rs.getBigDecimal("precio_descuento") +
-                        ", Descuento Aplicado: " + rs.getInt("descuento_aplicado"));
+            // Ejecutar la consulta
+            try (ResultSet rs = stmt.executeQuery()) {
+                boolean found = false; // Verificar si hay resultados
+                while (rs.next()) {
+                    found = true; // Se encontraron resultados
+                    // Imprimir los resultados
+                    System.out.println("ID: " + rs.getInt("id") +
+                            ", Nombre: " + rs.getString("nombre") +
+                            ", Descripción: " + rs.getString("descripcion") +
+                            ", Precio Original: " + rs.getBigDecimal("precio_original") +
+                            ", Precio con Descuento: " + rs.getBigDecimal("precio_descuento") +
+                            ", Descuento Aplicado: " + rs.getInt("descuento_aplicado"));
+                }
+                if (!found) {
+                    System.out.println("No se encontraron productos con descuento para la fecha: " + fechaActual);
+                }
             }
-            if (!found) {
-                System.out.println("No se encontraron productos con descuento para la fecha: " + fechaActual);
-            }
+        } catch (SQLException e) {
+            System.err.println("Error al obtener los productos con descuento: " + e.getMessage());
         }
-    } catch (SQLException e) {
-        System.err.println("Error al obtener los productos con descuento: " + e.getMessage());
     }
-}
     
     
     public static void mostrarMenu() {
@@ -447,7 +482,9 @@ public static void obtener_productos_descuento() {
 
         scanner.close(); 
     }
-        public static String obtenerFacturaXML(int facturaId) {
+    
+    public static String obtenerFacturaXML(int facturaId) {
+        login();
         String sql = "SELECT compraya.generar_factura_xml(?)"; // Llamada a la función almacenada
         try (PreparedStatement stmt = conexion.prepareStatement(sql)) {
             // Configurar el parámetro de entrada
