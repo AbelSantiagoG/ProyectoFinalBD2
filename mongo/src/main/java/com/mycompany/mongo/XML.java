@@ -36,7 +36,7 @@ public class XML {
         this.conexion = conexion1;
     }
     
-    public static String obtenerFacturaXML(int facturaId) {
+    public String obtenerFacturaXML(int facturaId) {
    
         String sql = "SELECT compraya.generar_factura_xml(?)"; // Llamada a la función almacenada
         try (PreparedStatement stmt = conexion.prepareStatement(sql)) {
@@ -56,7 +56,7 @@ public class XML {
         return null;
     }
  
-    public static String formatearXML(String xml) {
+    public String formatearXML(String xml) {
         try {
             // Crear un transformador para formatear el XML
             TransformerFactory factory = TransformerFactory.newInstance();

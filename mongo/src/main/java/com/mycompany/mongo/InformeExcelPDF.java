@@ -52,7 +52,7 @@ public class InformeExcelPDF {
         }
     }
     
-    public static List<Informe> obtenerInformeComprasPuntos(int usuarioId) {
+    public  List<Informe> obtenerInformeComprasPuntos(int usuarioId) {
         List<Informe> informes = new ArrayList<>();
         CallableStatement stmt = null;
         ResultSet rs = null;
@@ -90,7 +90,7 @@ public class InformeExcelPDF {
         return informes;
     }
     
-    public static void generarPDF(String archivoSalida, List<Informe> informes) {
+    public  void generarPDF(String archivoSalida, List<Informe> informes) {
         try {
             Document documento = new Document();
             PdfWriter.getInstance(documento, new FileOutputStream(archivoSalida));
@@ -125,7 +125,7 @@ public class InformeExcelPDF {
         }
     }
     
-    public static void generarExcel(String archivoSalida, List<Informe> informes) {
+    public  void generarExcel(String archivoSalida, List<Informe> informes) {
         Workbook workbook = new XSSFWorkbook();
         Sheet sheet = workbook.createSheet("Informe de Compras");
 

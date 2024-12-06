@@ -25,7 +25,7 @@ public class Informe {
         this.conexion = conexion1;
     }
     
-    private static void mostrarJsonInforme(){
+    public  void mostrarJsonInforme(){
             try  {
                  String query = "SELECT * FROM compraya.mostrar_informes_creados();";
                  CallableStatement stmt = conexion.prepareCall(query);
@@ -51,7 +51,7 @@ public class Informe {
         }
     }
     
-    private static String formatJson(String json) {
+    public String formatJson(String json) {
         // Simple formato con saltos de línea para una visualización más bonita
         // Si prefieres una librería más robusta, puedes usar Gson o Jackson en lugar de esto
         return json.replace(",", ",\n").replace("{", "{\n").replace("}", "\n}");

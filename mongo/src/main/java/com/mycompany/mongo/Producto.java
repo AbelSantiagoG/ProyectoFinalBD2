@@ -74,7 +74,7 @@ public class Producto {
         } finally {
             try {
                 if (stmt != null) stmt.close();
-                if (conexion != null) conexion.close();
+//                if (conexion != null) conexion.close();
             } catch (SQLException e) {
                 System.err.println("Error al cerrar la conexión: " + e.getMessage());
             }

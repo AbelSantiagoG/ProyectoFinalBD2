@@ -4,6 +4,11 @@
  */
 package com.mycompany.mongo;
 
+import com.mongodb.MongoClientSettings;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import org.bson.Document;
 import java.sql.Connection;
 import java.math.BigDecimal;
 import java.sql.CallableStatement;
@@ -27,7 +32,7 @@ public class VentaPuntos {
         this.conexion = conexion1;
     }
     
-    public static void guardarVentasJson(int idUsuario) {
+    public void guardarVentasJson(int idUsuario) {
         String sql = " CALL compraya.guardar_historial_compras_json(?) ";
         try  {
             CallableStatement callableStatement = conexion.prepareCall(sql);
@@ -41,7 +46,7 @@ public class VentaPuntos {
         }
     }
         
-    public static void guardarPuntosJson(int idUsuario) {
+    public void guardarPuntosJson(int idUsuario) {
         String sql = " CALL compraya.guardar_historial_puntos_json(?) ";
         try  {
             CallableStatement callableStatement = conexion.prepareCall(sql);
@@ -56,7 +61,7 @@ public class VentaPuntos {
     }
     
     
-    public static void insertarPuntosRedimidos(int cantidad, Date fechaRedencion, int usuarioId) {
+    public void insertarPuntosRedimidos(int cantidad, Date fechaRedencion, int usuarioId) {
         String sql = "CALL compraya.insertar_puntos_redimidos(?, ?, ?)";
         
         try  {
@@ -75,7 +80,7 @@ public class VentaPuntos {
         }
     }
     
-    public static void insertarPuntosGanados(int cantidad, Date fechaGanacia, String motivo, String referencia, int usuarioId) {
+    public void insertarPuntosGanados(int cantidad, Date fechaGanacia, String motivo, String referencia, int usuarioId) {
         String sql = "CALL compraya.insertar_puntos_ganados(?, ?, ?, ?, ?)";
         
         try  {
@@ -97,7 +102,7 @@ public class VentaPuntos {
     }
     
     
-    public static void crearVenta(int carritoId, int productoId) {
+    public void crearVenta(int carritoId, int productoId) {
         // SQL para llamar al procedimiento almacenado
         String sql = "CALL compraya.crear_venta(?, ?)";  // Llamada al procedimiento almacenado
 
@@ -111,10 +116,32 @@ public class VentaPuntos {
             stmt.execute();
 
             System.out.println("Venta creada correctamente.");
-
+            registrarAuditoriaMongo(carritoId, productoId);
         } catch (SQLException e) {
             // Manejo de excepciones, podría ser que el carrito o producto no existan
             System.err.println("Error al crear la venta: " + e.getMessage());
+        }
+    }
+    
+    private void registrarAuditoriaMongo(int carritoId, int productoId) {
+        // Configurar la conexión a MongoDB
+        try (var mongoClient = MongoClients.create("mongodb://localhost:27017")) {
+            MongoDatabase database = mongoClient.getDatabase("compraya");
+            MongoCollection<Document> auditoriaCollection = database.getCollection("auditorias");
+
+            // Crear el documento de auditoría
+            Document auditoria = new Document()
+                .append("carrito_id", carritoId)
+                .append("producto_id", productoId)
+                .append("accion", "CREAR_VENTA")
+                .append("fecha", new java.util.Date());
+
+            // Insertar el documento en la colección
+            auditoriaCollection.insertOne(auditoria);
+
+            System.out.println("Auditoría registrada en MongoDB.");
+        } catch (Exception e) {
+            System.err.println("Error al registrar la auditoría en MongoDB: " + e.getMessage());
         }
     }
 }

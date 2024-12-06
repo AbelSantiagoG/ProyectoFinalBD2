@@ -110,6 +110,11 @@ create table inventarios(
 );
 
 
+alter table carritos add column total_efectivo numeric default 0;
+alter table carritos add column total_antes_pago numeric default 0;
+
+
+
 create table carritos(
 	id int primary key default nextval('carritoSecuencia'),
 	cantidad int,
@@ -1046,48 +1051,60 @@ $$ LANGUAGE plpgsql;
 
 ----------Crear una factura en el momento en que se haga una venta----------
 
-CREATE OR REPLACE FUNCTION compraya.generar_factura_venta(carrito_id_input INT)
-RETURNS VOID AS $$
-DECLARE
-    v_usuario_id INT;
-    v_total NUMERIC;
-    v_subtotal NUMERIC;
-    v_impuesto NUMERIC;
-BEGIN
-    -- Obtener el usuario_id y el total del carrito
-    SELECT c.usuario_id, c.total INTO v_usuario_id, v_total
-    FROM compraya.carritos c
-    WHERE c.id = carrito_id_input;
 
-    -- Verificar si el carrito existe y tiene un usuario asociado
-    IF v_usuario_id IS NULL THEN
-        RAISE EXCEPTION 'Carrito no encontrado o no tiene usuario asociado.';
+CREATE OR REPLACE FUNCTION generar_factura_venta(p_carrito_id INT, p_cliente_id INT)
+RETURNS TRIGGER AS $$
+DECLARE
+    nuevo_carrito RECORD;
+    subtotal NUMERIC;
+    impuesto NUMERIC;
+    total NUMERIC;
+BEGIN
+    -- Seleccionamos el carrito basado en el carrito_id
+    SELECT * INTO nuevo_carrito 
+    FROM compraya.carritos 
+    WHERE id = p_carrito_id;
+
+    IF nuevo_carrito IS NULL THEN
+        RAISE EXCEPTION 'Carrito asociado a la venta no encontrado.';
     END IF;
 
-    -- Calcular el subtotal (en este caso, podría ser el total del carrito)
-    v_subtotal := v_total;
+    -- Calculamos el subtotal, impuesto y total
+    subtotal := nuevo_carrito.total;
+    impuesto := subtotal * 0.19; 
+    total := subtotal + impuesto;
 
-    -- Calcular el impuesto, si lo deseas. En este ejemplo, lo calculamos como el 16% del subtotal.
-    v_impuesto := v_subtotal * 0.16;
+    -- Validar cliente_id recibido como parámetro
+    IF p_cliente_id IS NULL THEN
+        RAISE EXCEPTION 'Cliente no encontrado para el carrito con ID %', p_carrito_id;
+    END IF;
 
-    -- Aquí podrías generar el código de la factura. En este caso, usamos una secuencia de ID.
-    INSERT INTO compraya.facturas (codigo, fecha, subtotal, total, impuesto, estado, cliente_id, carrito_id)
-    VALUES (
+    -- Insertar la factura en la tabla facturas
+    INSERT INTO compraya.facturas (
+        codigo, 
+        fecha, 
+        subtotal, 
+        total, 
+        impuesto, 
+        estado, 
+        cliente_id, 
+        carrito_id
+    ) VALUES (
         CONCAT('FAC-', nextval('compraya.facturaSecuencia')),
         CURRENT_DATE,
-        v_subtotal,
-        v_subtotal + v_impuesto, -- Total = subtotal + impuesto
-        v_impuesto,
-        'PAGADA',  -- El estado de la factura será 'PAGADO'
-        v_usuario_id,  -- Cliente_id es el usuario_id
-        carrito_id_input  -- Referenciamos el carrito con su ID
+        subtotal,
+        total,
+        impuesto,
+        'pendiente',
+        p_cliente_id,  -- Usamos el cliente_id pasado como parámetro
+        p_carrito_id
     );
 
-    -- Aquí, podrías continuar con cualquier otra lógica adicional necesaria.
-
-    RAISE NOTICE 'Factura generada para el usuario % con total %', v_usuario_id, v_total;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+
 
 
 
@@ -1261,7 +1278,6 @@ END;
 $$;
 
 
-
 ----------------------------------- Carrito -----------------------------------
 ----------Crear carrito----------
 
@@ -1372,11 +1388,14 @@ BEGIN
         FROM compraya.ventas v
         JOIN compraya.productos p ON v.producto_id = p.id
         WHERE v.carrito_id = v_carrito_id
-    ),
-    total_antes_pago = (
-        SELECT COALESCE(SUM(p.precio * v.cantidad), 0) 
+    )
+    WHERE id = v_carrito_id;
+
+    -- Paso 6: Actualizar la cantidad total en la tabla carritos
+    UPDATE compraya.carritos
+    SET cantidad = (
+        SELECT COALESCE(SUM(v.cantidad), 0) 
         FROM compraya.ventas v
-        JOIN compraya.productos p ON v.producto_id = p.id
         WHERE v.carrito_id = v_carrito_id
     )
     WHERE id = v_carrito_id;
@@ -1384,7 +1403,6 @@ BEGIN
     COMMIT;
 END;
 $$;
-
 
 
 
@@ -1426,19 +1444,15 @@ RETURNS TABLE (
     producto_id INT,
     nombre_producto VARCHAR,
     cantidad INT,
-    total_producto NUMERIC,
-    total_efectivo NUMERIC, -- Nuevo campo
-    total_antes_pago NUMERIC -- Nuevo campo
+    total NUMERIC
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
         v.producto_id,
         p.nombre AS nombre_producto,
-        v.cantidad,
-        p.precio * v.cantidad AS total_producto,
-        c.total_efectivo,  -- Incluir el total_efectivo
-        c.total_antes_pago  -- Incluir el total_antes_pago
+        c.cantidad,
+        c.total
     FROM 
         compraya.ventas v
     JOIN 
@@ -1617,6 +1631,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
 ----------------------------------- Auditoría -----------------------------------
 
 ----------Crear auditoría después de una factura----------
@@ -1698,10 +1713,13 @@ $$;
 
 ----------Triggers----------
 ----Trigger 1----
---CREATE TRIGGER crear_factura_tras_venta
---AFTER INSERT ON compraya.ventas
---FOR EACH ROW
---EXECUTE FUNCTION generar_factura_venta();
+CREATE TRIGGER crear_factura_tras_venta
+AFTER INSERT ON compraya.ventas
+FOR EACH ROW
+EXECUTE FUNCTION generar_factura_venta();
+
+
+
 
 ----Punto 13----
 CREATE TRIGGER trigger_puntos_ganados

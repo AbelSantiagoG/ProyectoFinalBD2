@@ -27,7 +27,7 @@ public class Historial {
         this.conexion = conexion1;
     }
     
-    public static void mostrarHistorialPuntos(int id) {
+    public  void mostrarHistorialPuntos(int id) {
         String sql = "SELECT * FROM compraya.mostrar_historial_puntos(?)";  // Llamada a la función almacenada
 
         try {
@@ -53,7 +53,7 @@ public class Historial {
     }
     
     
-    public static void mostrarHistorialCompras(int clienteId) {
+    public void mostrarHistorialCompras(int clienteId) {
         String sql = "SELECT * FROM compraya.mostrar_historial_compras(?)";  // Llamada a la función SQL
         
         try {

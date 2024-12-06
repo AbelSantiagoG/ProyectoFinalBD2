@@ -119,7 +119,7 @@ public class Carrito {
                 int productoId = rs.getInt("producto_id");
                 String nombreProducto = rs.getString("nombre_producto");
                 int cantidad = rs.getInt("cantidad");
-                double totalProducto = rs.getDouble("total_producto");
+                double totalProducto = rs.getDouble("total");
 
                 // Mostrar los resultados
                 System.out.println("Producto ID: " + productoId + ", Nombre: " + nombreProducto + ", Cantidad: " + cantidad + ", Total: " + totalProducto);

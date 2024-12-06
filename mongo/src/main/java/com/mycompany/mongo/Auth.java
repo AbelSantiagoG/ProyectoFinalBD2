@@ -104,7 +104,7 @@ public class Auth {
                 loginExitoso = true;
 
                 // Verificar si la sesión está registrada
-                PreparedStatement sessionCheckStmt = conexion.prepareStatement("SELECT * FROM sesiones_usuario WHERE numero_documento = ?");
+                PreparedStatement sessionCheckStmt = conexion.prepareStatement("SELECT * FROM compraya.sesiones_usuario WHERE numero_documento = ?");
                 sessionCheckStmt.setString(1, numeroDocumento);
                 ResultSet sessionRs = sessionCheckStmt.executeQuery();
                 if (sessionRs.next()) {

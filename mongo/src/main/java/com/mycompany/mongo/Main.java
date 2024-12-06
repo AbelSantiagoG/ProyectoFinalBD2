@@ -4,9 +4,15 @@
 
 package com.mycompany.mongo;
 
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.MongoCollection;
+import org.bson.Document;
 import com.itextpdf.text.*;
 import com.itextpdf.text.pdf.PdfPTable;
 import com.itextpdf.text.pdf.PdfWriter;
+import static com.mycompany.mongo.Producto.obtenerTodosLosProductos;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,6 +57,11 @@ public class Main {
     public static Pago pago;
     public static Inventario inventario;
     public static Usuario usuario;
+    public static XML xmljava;
+    public static Historial historial;
+    public static InformeExcelPDF informeExcelPdf;
+    public static Informe informe;
+    public static VentaPuntos ventaPuntos;
     
     public static void main(String[] args) {
         try {
@@ -63,8 +74,17 @@ public class Main {
             pago = new Pago(conexion);
             inventario = new Inventario(conexion);
             usuario = new Usuario(conexion);
+            xmljava = new XML(conexion);
+            historial = new Historial(conexion);
+            informeExcelPdf = new InformeExcelPDF(conexion);
+            informe = new Informe(conexion);
+            ventaPuntos = new VentaPuntos(conexion);
+            try {
+                mostrarMenu();
+            } catch (Exception e) {
+                System.out.println("Excepcion " + e.getMessage());
+            }
             
-            mostrarMenu();
             
         } catch (Exception e) {
             System.err.println("Error en la aplicacion: " + e.getMessage());
@@ -73,7 +93,7 @@ public class Main {
         }
     }
 
-    public static void mostrarMenu() {
+    public static void mostrarMenu() throws SQLException {
         Scanner scanner = new Scanner(System.in);
         boolean salir = false;
 
@@ -106,7 +126,7 @@ public class Main {
         scanner.close(); 
     }
 
-    public static void menuPrincipal() {
+    public static void menuPrincipal() throws SQLException {
         Scanner scanner = new Scanner(System.in);
         boolean salir = false;
 
@@ -118,8 +138,13 @@ public class Main {
             System.out.println("4. Inventario");
             System.out.println("5. Modificar cuenta Usuario");
             System.out.println("6. Eliminar Cuenta");
-            System.out.println("7. Salir");
-            System.out.print("Selecciona una opcion (1-7): ");
+            System.out.println("7. Ver factura XML");
+            System.out.println("8. Ver Historiales");
+            System.out.println("9. Informe de Compras e Historial de Puntos");
+            System.out.println("10. Informes en json");
+            System.out.println("11. Crear venta");
+            System.out.println("12. Salir");
+            System.out.print("Selecciona una opcion (1-12): ");
 
             int opcion = scanner.nextInt();
 
@@ -143,15 +168,70 @@ public class Main {
                     usuario.eliminarUsuario();
                     break;
                 case 7:
-                    System.out.println("Hasta luego");
+                    System.out.println("Ingrese el id de la factura");
+                    int idFactura = scanner.nextInt();
+                    System.out.println(xmljava.formatearXML(xmljava.obtenerFacturaXML(idFactura)));
+                    break;
+                case 8:
+                    menuHistoriales();
+                    break;
+                case 9:
+                    menuInformesExcelPdf();
+                    break;
+                case 10:
+                    informe.mostrarJsonInforme();
+                    break;
+                case 11:                  
+                    System.out.println("Ingrese el id del carrito");
+                    int carritoId = scanner.nextInt();
+                    System.out.println("Ingrese el id del producto");
+                    int productoId = scanner.nextInt();
+                    ventaPuntos.crearVenta(carritoId, productoId);
+                    break;
+                case 12:
+                      System.out.println("Hasta luego");
+                    conexion.close();
                     salir = true;
                     break;
                 default:
-                    System.out.println("Opción no válida, selecciona entre 1 y 7.");
+                    System.out.println("Opción no válida, selecciona entre 1 y 12.");
+            }
+        }
+    }
+    
+    
+    public static void menuInformesExcelPdf(){
+        Scanner scanner = new Scanner(System.in);
+        boolean salir = false;
+        
+        while(!salir){
+            System.out.println("Menu Informes:");
+            System.out.println("1. Pdf");
+            System.out.println("2. Excel");
+            System.out.println("3. Salir");
+            System.out.print("Selecciona una opcion (1-3): "); 
+            
+            int opcion = scanner.nextInt();
+            
+            switch(opcion){
+                case 1:
+                    int opcionPDF = scanner.nextInt();
+                    informeExcelPdf.generarPDF("C:/ArchivosInforme/informePDF.pdf", informeExcelPdf.obtenerInformeComprasPuntos(opcionPDF));
+                    break;
+                case 2:
+                    int opcionExcel = scanner.nextInt();
+                    informeExcelPdf.generarExcel("C:/ArchivosInforme/informeExcel.xlsx", informeExcelPdf.obtenerInformeComprasPuntos(opcionExcel));
+                    break;
+                case 3:
+                    salir = true;
+                    break;
+                default:
+                    System.out.println("Ingrese una opcion correcta");
             }
         }
     }
 
+    
     public static void menuProductos() {
         Scanner scanner = new Scanner(System.in);
         boolean salir = false;
@@ -181,6 +261,38 @@ public class Main {
                     producto.crearProducto();
                     break;
                 case 5:
+                    salir = true;
+                    break;
+                default:
+                    System.out.println("Opción no válida, selecciona entre 1 y 4.");
+            }
+        }
+    }
+        public static void menuHistoriales() {
+        Scanner scanner = new Scanner(System.in);
+        boolean salir = false;
+
+        while (!salir) {
+            System.out.println("Menu Historiales:");
+            System.out.println("1. Historial Puntos");
+            System.out.println("2. Historial compras");
+            System.out.println("3. Salir");
+            System.out.print("Selecciona una opcion (1-3): ");
+            
+            int opcion = scanner.nextInt();
+            
+            switch (opcion) {
+                case 1:
+                    System.out.println("Ingrese el id del usuario");
+                    int idUsuarioPuntos = scanner.nextInt();
+                    historial.mostrarHistorialPuntos(idUsuarioPuntos);
+                    break;
+                case 2:
+                    System.out.println("Ingrese el id dle usuario");
+                    int idUsuarioCompras = scanner.nextInt();
+                    historial.mostrarHistorialCompras(idUsuarioCompras);
+                    break;
+                case 3:
                     salir = true;
                     break;
                 default:
@@ -301,31 +413,63 @@ public class Main {
     }
 
     public static void menuMongo() {
-        Scanner scanner = new Scanner(System.in);
-        boolean salir = false;
+        try (MongoClient mongoClient = MongoClients.create("mongodb://localhost:27017")) { // Cambia la URL si es necesario
+            MongoDatabase database = mongoClient.getDatabase("compraya");
+            MongoCollection<Document> auditorias = database.getCollection("auditorias");
 
-        while (!salir) {
-            System.out.println("Menu MongoDB:");
-            System.out.println("1. Ver auditorías");
-            System.out.println("2. Auditoría por nombre de usuario y producto");
-            System.out.println("3. Salir");
-            System.out.print("Selecciona una opcion (1-3): ");
-            
-            int opcion = scanner.nextInt();
+            Scanner scanner = new Scanner(System.in);
+            boolean salir = false;
 
-            switch (opcion) {
-                case 1:
-                    // Ver auditorías
-                    break;
-                case 2:
-                    // Auditoría por nombre de usuario y producto
-                    break;
-                case 3:
-                    salir = true;
-                    break;
-                default:
-                    System.out.println("Opción no válida, selecciona entre 1 y 3.");
+            while (!salir) {
+                System.out.println("Menu MongoDB:");
+                System.out.println("1. Ver auditorías");
+                System.out.println("2. Auditoría por nombre de usuario y producto");
+                System.out.println("3. Salir");
+                System.out.print("Selecciona una opcion (1-3): ");
+                
+                int opcion = scanner.nextInt();
+                scanner.nextLine(); // Consumir la nueva línea después del número
+
+                switch (opcion) {
+                    case 1:
+                        // Ver todas las auditorías
+                        for (Document doc : auditorias.find()) {
+                            System.out.println(doc.toJson());
+                        }
+                        break;
+
+                    case 2:
+
+                        // Buscar auditoría por nombre de usuario y producto
+                        System.out.print("Introduce el id del carrito: ");
+                        int carritoId = scanner.nextInt();  // Usar int en lugar de String
+                        scanner.nextLine(); // Consumir el salto de línea restante
+                        System.out.print("Introduce el id del producto: ");
+                        int productoId = scanner.nextInt();  // Usar int en lugar de String
+
+                        // Construir la consulta en MongoDB
+                        boolean found = false;  // Bandera para saber si encontramos algo
+
+                        for (Document doc : auditorias.find(new Document("carrito_id", carritoId).append("producto_id", productoId))) {
+                            System.out.println(doc.toJson());
+                            found = true;  // Si encontramos al menos un documento, actualizamos la bandera
+                        }
+
+                        // Si no encontramos ningún documento
+                        if (!found) {
+                            System.out.println("No se encontraron auditorías para el usuario y producto especificados.");
+                        }
+                        break;
+                    case 3:
+                        salir = true;
+                        break;
+
+                    default:
+                        System.out.println("Opción no válida, selecciona entre 1 y 3.");
+                }
             }
+        } catch (Exception e) {
+            System.err.println("Error al conectar con MongoDB: " + e.getMessage());
         }
     }
 
@@ -365,7 +509,7 @@ public class Main {
     
     public static void initConnection() throws SQLException, ClassNotFoundException {
         Class.forName("org.postgresql.Driver");
-        conexion = DriverManager.getConnection("jdbc:postgresql://localhost:5432/postgres", "postgres", "elpepe1234");
+        conexion = DriverManager.getConnection("jdbc:postgresql://localhost:5432/postgres", "postgres", "andres2003");
         System.out.println("Conexion exitosa");
     }
 
