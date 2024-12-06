@@ -75,6 +75,7 @@ public class Auditoría {
                 System.out.println("Nombre Usuario: " + nombreUsuarioResult);
                 System.out.println("Nombre Producto: " + nombreProductoResult);
                 System.out.println("---------------");
+                
             }
 
         } catch (SQLException e) {

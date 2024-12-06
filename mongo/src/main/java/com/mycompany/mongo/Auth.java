@@ -67,6 +67,7 @@ public class Auth {
             System.out.println("Usuario registrado exitosamente.");
         } catch (SQLException e) {
             System.err.println("Error al registrar el usuario: " );
+            
         } finally {
             try {
                 if (register != null) register.close();
