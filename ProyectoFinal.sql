@@ -1070,7 +1070,7 @@ BEGIN
 
     UPDATE compraya.carritos
     SET total = (SELECT SUM(p.precio * v.cantidad) FROM compraya.ventas v
-                 JOIN productos p ON v.producto_id = p.id
+                 JOIN compraya.productos p ON v.producto_id = p.id
                  WHERE v.carrito_id = p_carrito_id)
     WHERE id = p_carrito_id;
     
@@ -1080,16 +1080,26 @@ $$;
 
 ----------Ver productos del carrito----------
 
-CREATE OR REPLACE FUNCTION obtener_productos_carrito(
-    p_carrito_id INT
-)
-RETURNS TABLE(producto_nombre VARCHAR, cantidad INT, total_producto NUMERIC) AS $$
+CREATE OR REPLACE FUNCTION obtener_productos_en_carrito(p_carrito_id INT)
+RETURNS TABLE (
+    producto_id INT,
+    nombre_producto VARCHAR,
+    cantidad INT,
+    total_producto NUMERIC
+) AS $$
 BEGIN
     RETURN QUERY
-    SELECT p.nombre, v.cantidad, p.precio * v.cantidad
-    FROM compraya.ventas v
-    JOIN productos p ON v.producto_id = p.id
-    WHERE v.carrito_id = p_carrito_id;
+    SELECT 
+        v.producto_id,
+        p.nombre AS nombre_producto,
+        v.cantidad,
+        p.precio * v.cantidad AS total_producto
+    FROM 
+        compraya.ventas v
+    JOIN 
+        compraya.productos p ON v.producto_id = p.id
+    WHERE 
+        v.carrito_id = p_carrito_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1169,7 +1179,7 @@ BEGIN
         COALESCE(pg.cantidad, 0) AS puntos_acumulados,
         pg.motivo
     FROM compraya.historial_compras hc
-    LEFT JOIN historial_puntos pg ON hc.cliente_id = pg.usuario_id AND hc.factura_id = pg.venta_id
+    LEFT JOIN compraya.historial_puntos pg ON hc.cliente_id = pg.usuario_id AND hc.factura_id = pg.venta_id
     WHERE hc.cliente_id = usuario_id_input
     ORDER BY hc.fecha DESC;
 END;
@@ -1477,6 +1487,8 @@ select login_usuario(
 select * from usuarios;
 select * from productos;
 select * from inventarios;
+select * from carritos;
+
 
 drop table productos;
 drop table inventarios;

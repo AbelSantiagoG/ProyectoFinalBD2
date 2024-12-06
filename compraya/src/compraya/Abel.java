@@ -292,6 +292,96 @@ public class Abel {
             }
         }
     }
+    
+    public static void eliminarProductoDelCarrito(int carritoId, int productoId) {
+        CallableStatement stmt = null;
+        try {
+            // Llamada al procedimiento almacenado en PostgreSQL
+            stmt = conexiona.prepareCall("CALL compraya.eliminar_producto_del_carrito(?, ?)");
+
+            // Establecer los parámetros para el procedimiento
+            stmt.setInt(1, carritoId);
+            stmt.setInt(2, productoId);
+
+            // Ejecutar el procedimiento
+            stmt.execute();
+            System.out.println("Producto con ID " + productoId + " eliminado del carrito con ID " + carritoId + " exitosamente.");
+
+        } catch (SQLException e) {
+            // Manejo de excepciones
+            System.err.println("Error al eliminar el producto del carrito: " + e.getMessage());
+        } finally {
+            try {
+                if (stmt != null) stmt.close();
+                if (conexiona != null) conexiona.close();
+            } catch (SQLException e) {
+                System.err.println("Error al cerrar la conexión: " + e.getMessage());
+            }
+        }
+    }
+    
+    public static void obtenerProductosEnCarrito(int carritoId) {
+        CallableStatement stmt = null;
+        ResultSet rs = null;
+        try {
+            // Llamada a la función en PostgreSQL
+            stmt = conexiona.prepareCall("SELECT * FROM compraya.obtener_productos_en_carrito(?)");
+
+            // Establecer el parámetro para la función
+            stmt.setInt(1, carritoId);
+
+            // Ejecutar la función y obtener el resultado
+            rs = stmt.executeQuery();
+
+            // Procesar los resultados
+            while (rs.next()) {
+                int productoId = rs.getInt("producto_id");
+                String nombreProducto = rs.getString("nombre_producto");
+                int cantidad = rs.getInt("cantidad");
+                double totalProducto = rs.getDouble("total_producto");
+
+                // Mostrar los resultados
+                System.out.println("Producto ID: " + productoId + ", Nombre: " + nombreProducto + ", Cantidad: " + cantidad + ", Total: " + totalProducto);
+            }
+
+        } catch (SQLException e) {
+            System.err.println("Error al obtener productos del carrito: " + e.getMessage());
+        } finally {
+            try {
+                if (rs != null) rs.close();
+                if (stmt != null) stmt.close();
+                if (conexiona != null) conexiona.close();
+            } catch (SQLException e) {
+                System.err.println("Error al cerrar la conexión: " + e.getMessage());
+            }
+        }
+    }
+    
+    public static void vaciarCarrito(int carritoId) {
+        CallableStatement stmt = null;
+        try {
+            // Preparar la llamada al procedimiento
+            stmt = conexiona.prepareCall("CALL compraya.vaciar_carrito(?)");
+
+            // Establecer el parámetro del procedimiento
+            stmt.setInt(1, carritoId);
+
+            // Ejecutar el procedimiento
+            stmt.execute();
+            System.out.println("El carrito con ID " + carritoId + " ha sido vaciado exitosamente.");
+
+        } catch (SQLException e) {
+            System.err.println("Error al vaciar el carrito: " + e.getMessage());
+        } finally {
+            try {
+                if (stmt != null) stmt.close();
+                if (conexiona != null) conexiona.close();
+            } catch (SQLException e) {
+                System.err.println("Error al cerrar la conexión: " + e.getMessage());
+            }
+        }
+    }
+
 
 
 }
