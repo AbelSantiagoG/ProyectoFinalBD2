@@ -9,6 +9,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Scanner;
 
 /**
  *
@@ -17,11 +18,24 @@ import java.sql.SQLException;
 public class Inventario {
     private static Connection conexion;
 
-    public Inventario(Connection conexion) {
-        this.conexion = conexion;
+    public Inventario(Connection conexion1) {
+        this.conexion = conexion1;
     }
     
-    public static void crearInventario(int productoId, int cantidadDisponible, String referenciaCompra) {
+    public static void crearInventario() {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Introduce el ID del producto: ");
+        int productoId = scanner.nextInt();
+
+        System.out.print("Introduce la cantidad disponible: ");
+        int cantidadDisponible = scanner.nextInt();
+
+        scanner.nextLine();  // Limpiar el buffer
+
+        System.out.print("Introduce la referencia de compra: ");
+        String referenciaCompra = scanner.nextLine();
+
         CallableStatement stmt = null;
         try {
             stmt = conexion.prepareCall("CALL compraya.crear_inventario(?, ?, ?)");
@@ -42,15 +56,34 @@ public class Inventario {
         }
     }
     
-    public static void actualizarInventario(int productoId, int nuevaCantidad) {
+    public static void actualizarInventario() {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Introduce el ID del producto: ");
+        int productoId = scanner.nextInt();
+
+        System.out.print("Introduce la nueva cantidad: ");
+        int nuevaCantidad = scanner.nextInt();
+
         CallableStatement stmt = null;
         try {
+            // Comprobar si la conexión está abierta
+            if (conexion == null || conexion.isClosed()) {
+                System.err.println("Error: La conexión está cerrada.");
+                return;  // Salir si la conexión está cerrada
+            }
+
+            // Preparar el llamado al procedimiento almacenado
             stmt = conexion.prepareCall("CALL compraya.actualizar_inventario(?, ?)");
+
+            // Establecer los parámetros del procedimiento
             stmt.setInt(1, productoId);
             stmt.setInt(2, nuevaCantidad);
 
+            // Ejecutar el procedimiento almacenado
             stmt.execute();
             System.out.println("Inventario actualizado exitosamente.");
+
         } catch (SQLException e) {
             System.err.println("Error al actualizar inventario: " + e.getMessage());
         } finally {
@@ -61,11 +94,23 @@ public class Inventario {
             }
         }
     }
-    
-    public static void consultarInventario(int productoId) {
+
+
+    public static void consultarInventario() {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Introduce el ID del producto: ");
+        int productoId = scanner.nextInt();
+
         PreparedStatement stmt = null;
         ResultSet rs = null;
         try {
+            // Comprobar si la conexión está abierta
+            if (conexion == null || conexion.isClosed()) {
+                System.err.println("Error: La conexión está cerrada.");
+                return;
+            }
+
             // Preparar la consulta SELECT que llama a la función de PostgreSQL
             stmt = conexion.prepareStatement("SELECT * FROM compraya.consultar_inventario(?)");
 
@@ -99,7 +144,15 @@ public class Inventario {
     }
 
     
-    public static void reducirInventario(int productoId, int cantidadReducir) {
+    public static void reducirInventario() {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Introduce el ID del producto: ");
+        int productoId = scanner.nextInt();
+
+        System.out.print("Introduce la cantidad a reducir: ");
+        int cantidadReducir = scanner.nextInt();
+
         CallableStatement stmt = null;
         try {
             stmt = conexion.prepareCall("CALL compraya.reducir_inventario(?, ?)");
@@ -118,8 +171,13 @@ public class Inventario {
             }
         }
     }
-    
-    public static void eliminarInventario(int productoId) {
+
+    public static void eliminarInventario() {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Introduce el ID del producto: ");
+        int productoId = scanner.nextInt();
+
         CallableStatement stmt = null;
         try {
             stmt = conexion.prepareCall("CALL compraya.eliminar_inventario(?)");
@@ -138,7 +196,15 @@ public class Inventario {
         }
     }
     
-    public static boolean verificarDisponibilidad(int productoId, int cantidadSolicitada) {
+    public static boolean verificarDisponibilidad() {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Introduce el ID del producto: ");
+        int productoId = scanner.nextInt();
+
+        System.out.print("Introduce la cantidad solicitada: ");
+        int cantidadSolicitada = scanner.nextInt();
+
         PreparedStatement stmt = null;
         ResultSet rs = null;
         try {
@@ -169,4 +235,7 @@ public class Inventario {
         }
         return false; // Devuelve false si hubo algún problema al obtener los datos
     }
+
+
+
 }

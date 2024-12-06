@@ -32,8 +32,8 @@ import javax.xml.transform.stream.StreamSource;
 public class XML {
     private static Connection conexion;
 
-    public XML(Connection conexion) {
-        this.conexion = conexion;
+    public XML(Connection conexion1) {
+        this.conexion = conexion1;
     }
     
     public static String obtenerFacturaXML(int facturaId) {

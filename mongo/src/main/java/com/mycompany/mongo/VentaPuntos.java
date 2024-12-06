@@ -23,8 +23,8 @@ import java.sql.PreparedStatement;
 public class VentaPuntos {
     private static Connection conexion;
 
-    public VentaPuntos(Connection conexion) {
-        this.conexion = conexion;
+    public VentaPuntos(Connection conexion1) {
+        this.conexion = conexion1;
     }
     
     public static void guardarVentasJson(int idUsuario) {

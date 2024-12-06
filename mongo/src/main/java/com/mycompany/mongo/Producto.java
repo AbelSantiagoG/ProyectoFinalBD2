@@ -20,12 +20,11 @@ import java.sql.PreparedStatement;
 public class Producto {
     private static Connection conexion;
 
-    public Producto(Connection conexion) {
-        this.conexion = conexion;
+    public Producto(Connection conexion1) {
+        this.conexion = conexion1;
     }
     
     public static void crearProducto() {
-     
         Scanner scanner = new Scanner(System.in);
 
         // Solicitar los parámetros al usuario
@@ -49,9 +48,14 @@ public class Producto {
         System.out.print("Ingrese el ID de la categoría: ");
         int categoriaId = scanner.nextInt();
 
+        // Solicitar la cantidad de inventario
+        System.out.print("Ingrese la cantidad de inventario para este producto: ");
+        int cantidadInventario = scanner.nextInt();
+
         CallableStatement stmt = null;
         try {
-            stmt = conexion.prepareCall("CALL compraya.crear_producto(?, ?, CAST(? AS numeric), ?, ?, ?)");
+            // Modificar la llamada para incluir el parámetro de cantidad de inventario
+            stmt = conexion.prepareCall("CALL compraya.crear_producto(?, ?, CAST(? AS numeric), ?, ?, ?, ?)");
 
             // Establecer los parámetros del procedimiento
             stmt.setString(1, nombre);
@@ -60,9 +64,10 @@ public class Producto {
             stmt.setString(4, imagen);
             stmt.setInt(5, descuento);
             stmt.setInt(6, categoriaId);
+            stmt.setInt(7, cantidadInventario);  // Agregar cantidad de inventario
 
             stmt.execute();
-            System.out.println("Producto creado exitosamente.");
+            System.out.println("Producto creado exitosamente con inventario.");
 
         } catch (SQLException e) {
             System.err.println("Error al crear el producto: " + e.getMessage());
@@ -75,6 +80,7 @@ public class Producto {
             }
         }
     }
+
     
     public static void modificarProducto() {
      

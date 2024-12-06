@@ -21,8 +21,8 @@ import java.sql.PreparedStatement;
 public class Informe {
     private static Connection conexion;
 
-    public Informe(Connection conexion) {
-        this.conexion = conexion;
+    public Informe(Connection conexion1) {
+        this.conexion = conexion1;
     }
     
     private static void mostrarJsonInforme(){

@@ -23,8 +23,8 @@ import java.sql.PreparedStatement;
 public class Historial {
     private static Connection conexion;
 
-    public Historial(Connection conexion) {
-        this.conexion = conexion;
+    public Historial(Connection conexion1) {
+        this.conexion = conexion1;
     }
     
     public static void mostrarHistorialPuntos(int id) {

@@ -22,8 +22,8 @@ import java.sql.PreparedStatement;
 public class Auth {
     private static Connection conexion;
 
-    public Auth(Connection conexion) {
-        this.conexion = conexion;
+    public Auth(Connection conexion1) {
+        this.conexion = conexion1;
     }
     
     public static void register() {
@@ -76,47 +76,58 @@ public class Auth {
         }
     }
 
-    public static void login() {
+    public boolean login() {
         Scanner scanner = new Scanner(System.in);
 
-        // Solicitar datos de login
-        System.out.println("Login de Usuario");
+        System.out.println("Iniciar sesión");
         System.out.print("Email: ");
         String email = scanner.nextLine();
 
-        System.out.print("Contrasenia: ");
+        System.out.print("Contraseña: ");
         String contrasenia = scanner.nextLine();
 
-        PreparedStatement loginStmt = null;
+        boolean loginExitoso = false;
+        CallableStatement loginStmt = null;
         ResultSet rs = null;
 
         try {
-            String query = "SELECT compraya.login_usuario(?, ?)";
-
-            // Preparar el statement
-            loginStmt = conexion.prepareStatement(query);
-
+            // Llamar a la función 'login_usuario' en PostgreSQL
+            loginStmt = conexion.prepareCall("SELECT compraya.login_usuario(?, ?)");
             loginStmt.setString(1, email);
             loginStmt.setString(2, contrasenia);
 
+            // Ejecutar y obtener el número de documento del usuario
             rs = loginStmt.executeQuery();
-
             if (rs.next()) {
-                String numeroDocumento = rs.getString(1); 
-                System.out.println("Login exitoso. Usuario con documento: " + numeroDocumento);
-            } else {
-                System.out.println("Error en el login. Revisa tus credenciales.");
-            }
+                String numeroDocumento = rs.getString(1); // El número de documento es el primer valor retornado
+                System.out.println("Bienvenido, usuario con número de documento: " + numeroDocumento);
+                loginExitoso = true;
 
+                // Verificar si la sesión está registrada
+                PreparedStatement sessionCheckStmt = conexion.prepareStatement("SELECT * FROM sesiones_usuario WHERE numero_documento = ?");
+                sessionCheckStmt.setString(1, numeroDocumento);
+                ResultSet sessionRs = sessionCheckStmt.executeQuery();
+                if (sessionRs.next()) {
+                    System.out.println("Sesión registrada correctamente.");
+                } else {
+                    System.out.println("Error: No se registró la sesión.");
+                }
+                sessionRs.close();
+                sessionCheckStmt.close();
+            }
         } catch (SQLException e) {
-            System.err.println("Error al iniciar sesion: " );
+            System.err.println("Error al iniciar sesión: " + e.getMessage());
         } finally {
             try {
                 if (rs != null) rs.close();
                 if (loginStmt != null) loginStmt.close();
-            } catch (SQLException ex) {
-                System.err.println("Error al cerrar recursos: " + ex.getMessage());
+            } catch (SQLException e) {
+                System.err.println("Error al cerrar recursos: " + e.getMessage());
             }
         }
+
+        return loginExitoso;
     }
+
+
 }

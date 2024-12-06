@@ -69,6 +69,13 @@ start with 1
 increment by 1
 no maxvalue;
 
+CREATE TABLE sesiones_usuario (
+    numero_documento VARCHAR PRIMARY KEY,
+    fecha_inicio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ultima_actividad TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
 create table usuarios (
     id int primary key default nextval('usuarioSecuencia'), 
     numero_documento varchar(15) unique not null,
@@ -102,13 +109,6 @@ create table inventarios(
 	producto_id int references productos(id)
 );
 
-ALTER TABLE carritos 
-ADD COLUMN usuario_id int;
-
-
-ALTER TABLE carritos
-ADD CONSTRAINT fk_carritos_usuario FOREIGN KEY (usuario_id)
-REFERENCES usuarios (id);
 
 create table carritos(
 	id int primary key default nextval('carritoSecuencia'),
@@ -116,6 +116,8 @@ create table carritos(
 	total numeric,
 	usuario_id INT REFERENCES compraya.usuarios(id) UNIQUE
 );
+
+select * from ventas;
 
 create table ventas(
 	id int primary key default nextval('ventaSecuencia'),
@@ -243,72 +245,91 @@ DECLARE
     numero_documento_actual VARCHAR;
     contrasenia_actual VARCHAR;
 BEGIN
+    -- Verificar si el usuario existe
     SELECT contrasenia, numero_documento
     INTO contrasenia_actual, numero_documento_actual
     FROM compraya.usuarios
     WHERE email = email_input;
 
+    -- Si no se encuentra el usuario, lanzar una excepción
     IF contrasenia_actual IS NULL THEN
-        RAISE EXCEPTION 'El usuario no existe';
+        RAISE EXCEPTION 'El usuario con el email % no existe', email_input;
     END IF;
 
+    -- Verificar si la contraseña es correcta
     IF contrasenia_actual = contrasenia_input THEN
-        CALL compraya.establecer_sesion(numero_documento_actual);
+        -- Llamar al procedimiento para iniciar sesión
+        CALL compraya.iniciar_sesion(numero_documento_actual);
 
+        -- Retornar el número de documento para la sesión
         RETURN numero_documento_actual;
     ELSE
-        RAISE EXCEPTION 'Contraseña incorrecta';
+        -- Si la contraseña es incorrecta, lanzar una excepción
+        RAISE EXCEPTION 'Contraseña incorrecta para el usuario %', email_input;
     END IF;
 END;
 $$ LANGUAGE plpgsql;
 
+
+
 ----------Establecer sesión----------
 
-CREATE OR REPLACE PROCEDURE establecer_sesion(_numero_documento VARCHAR)
+CREATE OR REPLACE PROCEDURE iniciar_sesion(
+    _numero_documento VARCHAR
+)
 LANGUAGE plpgsql AS $$
 BEGIN
-    PERFORM set_config('app.numero_documento', _numero_documento, TRUE);
+    -- Insertar o actualizar la sesión del usuario
+    INSERT INTO compraya.sesiones_usuario (numero_documento, fecha_inicio, ultima_actividad)
+    VALUES (_numero_documento, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT (numero_documento)
+    DO UPDATE SET ultima_actividad = CURRENT_TIMESTAMP;
 END;
 $$;
 
-----------Cerrar sesión----------
-
-CREATE OR REPLACE PROCEDURE cerrar_sesion()
-LANGUAGE plpgsql AS $$
-BEGIN
-    PERFORM set_config('app.numero_documento', NULL, TRUE);
-END;
-$$;
 
 ----------¿Usuario logueado?----------
 
 CREATE OR REPLACE FUNCTION es_usuario_logueado()
 RETURNS BOOLEAN AS $$
+DECLARE
+    numero_documento_actual VARCHAR;
 BEGIN
-    RETURN current_setting('app.numero_documento', TRUE) IS NOT NULL;
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN FALSE;
+    -- Verifica si existe una sesión activa en la tabla sesiones_usuario
+    SELECT numero_documento INTO numero_documento_actual
+    FROM compraya.sesiones_usuario
+    LIMIT 1;
+
+    RETURN numero_documento_actual IS NOT NULL;
 END;
 $$ LANGUAGE plpgsql;
 
 ----------Rol del usuario logueado----------
 
 CREATE OR REPLACE FUNCTION obtener_rol_usuario()
-RETURNS INT AS $$
+RETURNS INTEGER AS $$
 DECLARE
-    rol_usuario INT;
+    numero_documento_actual VARCHAR;
+    rol_usuario_actual INTEGER;
 BEGIN
-    SELECT rol INTO rol_usuario
-    FROM compraya.usuarios
-    WHERE numero_documento = current_setting('app.numero_documento', TRUE);
+    -- Recuperar el número de documento del usuario desde la tabla de sesiones
+    SELECT numero_documento INTO numero_documento_actual
+    FROM compraya.sesiones_usuario
+    LIMIT 1;
 
-    RETURN rol_usuario;
-EXCEPTION
-    WHEN OTHERS THEN
-        RAISE EXCEPTION 'No hay un usuario logueado';
+    IF numero_documento_actual IS NULL THEN
+        RAISE EXCEPTION 'Error: No hay un usuario logueado.';
+    END IF;
+
+    -- Obtener el rol del usuario
+    SELECT rol INTO rol_usuario_actual
+    FROM compraya.usuarios
+    WHERE numero_documento = numero_documento_actual;
+
+    RETURN rol_usuario_actual;
 END;
 $$ LANGUAGE plpgsql;
+
 
 
 ----------Actualizar usuario----------
@@ -368,6 +389,58 @@ BEGIN
 END;
 $$;
 
+----------Modificar usuario logueado----------
+CREATE OR REPLACE PROCEDURE modificar_usuario_logueado(
+    numero_documento_input VARCHAR DEFAULT NULL,
+    nombre_input VARCHAR DEFAULT NULL,
+    contrasenia_input VARCHAR DEFAULT NULL,
+    email_input VARCHAR DEFAULT NULL,
+    celular_input VARCHAR DEFAULT NULL,
+    puntos_input INT DEFAULT NULL,
+    rol_input INT DEFAULT NULL
+)
+LANGUAGE plpgsql AS $$
+DECLARE
+    usuario_id INT;
+BEGIN
+    -- Obtener el número de documento del usuario logueado
+    SELECT numero_documento INTO numero_documento_input
+    FROM compraya.sesiones_usuario
+    ORDER BY ultima_actividad DESC
+    LIMIT 1;  -- Obtenemos el último usuario logueado
+
+    -- Verificar si se encontró un número de documento (es decir, si hay una sesión activa)
+    IF numero_documento_input IS NULL THEN
+        RAISE EXCEPTION 'Error: No hay un usuario logueado.';
+    END IF;
+
+    -- Obtener el usuario_id a partir del numero_documento
+    SELECT id INTO usuario_id
+    FROM compraya.usuarios
+    WHERE numero_documento = numero_documento_input;
+
+    -- Verificar si el usuario existe
+    IF usuario_id IS NULL THEN
+        RAISE EXCEPTION 'Error: Usuario no encontrado.';
+    END IF;
+
+    -- Actualizar los datos del usuario
+    UPDATE compraya.usuarios
+    SET 
+        numero_documento = COALESCE(numero_documento_input, numero_documento),
+        nombre = COALESCE(nombre_input, nombre),
+        contrasenia = COALESCE(contrasenia_input, contrasenia),
+        email = COALESCE(email_input, email),
+        celular = COALESCE(celular_input, celular),
+        puntos = COALESCE(puntos_input, puntos),
+        rol = COALESCE(rol_input, rol)
+    WHERE id = usuario_id;
+
+    RAISE NOTICE 'Usuario con ID % modificado exitosamente.', usuario_id;
+END;
+$$;
+
+
 
 ----------Eliminar usuario----------
 
@@ -386,6 +459,61 @@ BEGIN
     RAISE NOTICE 'Usuario con ID % eliminado exitosamente.', usuario_id_input;
 END;
 $$;
+
+----------Eliminar usuario logueado----------
+
+CREATE OR REPLACE PROCEDURE eliminar_usuario_logueado(numero_documento_input VARCHAR)
+LANGUAGE plpgsql AS $$
+DECLARE
+    usuario_logueado_id INT;
+    numero_documento_logueado VARCHAR;
+    v_carrito_id INT;
+BEGIN
+    -- Obtener el número de documento del usuario logueado
+    SELECT numero_documento INTO numero_documento_logueado
+    FROM compraya.sesiones_usuario
+    ORDER BY ultima_actividad DESC
+    LIMIT 1;
+
+    -- Verificar si hay un usuario logueado
+    IF numero_documento_logueado IS NULL THEN
+        RAISE EXCEPTION 'Error: No hay un usuario logueado.';
+    END IF;
+
+    -- Verificar si el número de documento del usuario logueado es el mismo que el proporcionado
+    IF numero_documento_logueado != numero_documento_input THEN
+        RAISE EXCEPTION 'Error: No puedes eliminar a otro usuario. Solo puedes eliminar tu propia cuenta.';
+    END IF;
+
+    -- Verificar si el usuario con ese número de documento existe
+    IF NOT EXISTS (
+        SELECT 1 FROM compraya.usuarios WHERE numero_documento = numero_documento_input
+    ) THEN
+        RAISE EXCEPTION 'Error: El usuario con número de documento % no existe.', numero_documento_input;
+    END IF;
+
+    -- Obtener el id del carrito del usuario
+    SELECT c.id INTO v_carrito_id
+    FROM compraya.carritos c
+    WHERE c.usuario_id = (SELECT u.id FROM compraya.usuarios u WHERE u.numero_documento = numero_documento_input)
+    LIMIT 1;
+
+    -- Verificar si existe el carrito
+    IF v_carrito_id IS NOT NULL THEN
+        -- Eliminar las ventas asociadas al carrito
+        DELETE FROM compraya.ventas v WHERE v.carrito_id = v_carrito_id;
+
+        -- Eliminar el carrito
+        DELETE FROM compraya.carritos c WHERE c.id = v_carrito_id;
+    END IF;
+
+    -- Eliminar al usuario
+    DELETE FROM compraya.usuarios u WHERE u.numero_documento = numero_documento_input;
+
+    RAISE NOTICE 'Usuario con número de documento % eliminado exitosamente.', numero_documento_input;
+END;
+$$;
+
 
 ----------Obtener todos los usuarios----------
 
@@ -421,62 +549,77 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE PROCEDURE crear_producto(
     nombre_input VARCHAR,
     descripcion_input VARCHAR,
-    precio_input decimal,
+    precio_input DECIMAL,
     imagen_input VARCHAR,
     descuento_input INT,
-    categoria_id_input INT
+    categoria_id_input INT,
+    cantidad_inventario_input INT  -- Nuevo parámetro para la cantidad de inventario
 )
 LANGUAGE plpgsql AS $$
+DECLARE
+    nuevo_producto_id INT;  -- Variable para almacenar el ID del nuevo producto
 BEGIN
+    -- Verificar si hay un usuario logueado
     IF NOT compraya.es_usuario_logueado() THEN
         RAISE EXCEPTION 'Error: No hay un usuario logueado.';
     END IF;
 
+    -- Verificar si el usuario tiene permisos (rol 1: administrador)
     IF compraya.obtener_rol_usuario() != 1 THEN
         RAISE EXCEPTION 'Error: No tienes permisos para crear productos.';
     END IF;
 
+    -- Verificar si el producto ya existe en la base de datos
     IF EXISTS (
         SELECT 1 FROM compraya.productos WHERE nombre = nombre_input
     ) THEN
         RAISE EXCEPTION 'Error: El producto con nombre % ya está registrado.', nombre_input;
     END IF;
 
+    -- Verificar si la categoría existe
     IF NOT EXISTS (
-        SELECT 1 FROM compraya.ategorias WHERE id = categoria_id_input
+        SELECT 1 FROM compraya.categorias WHERE id = categoria_id_input
     ) THEN
         RAISE EXCEPTION 'Error: La categoría con ID % no existe.', categoria_id_input;
     END IF;
 
+    -- Insertar el nuevo producto en la tabla 'productos' y obtener su ID
     INSERT INTO compraya.productos (
         nombre, descripcion, precio, imagen, descuento, categoria_id
-    ) VALUES (
+    ) 
+    VALUES (
         nombre_input, descripcion_input, precio_input, imagen_input, descuento_input, categoria_id_input
+    )
+    RETURNING id INTO nuevo_producto_id;  -- Obtener el ID del nuevo producto
+
+    -- Insertar el inventario para el nuevo producto
+    INSERT INTO compraya.inventarios (
+        cantidad_disponible, referencia_compra, producto_id
+    )
+    VALUES (
+        cantidad_inventario_input, 'REF_' || nuevo_producto_id, nuevo_producto_id
     );
 
-    RAISE NOTICE 'Producto % creado exitosamente.', nombre_input;
+    -- Notificar que el producto se ha creado exitosamente
+    RAISE NOTICE 'Producto % creado exitosamente con inventario.', nombre_input;
 END;
 $$;
 
 
+
+
+
 ----------Actualizar producto (Solo administrador)----------
 
-CREATE OR REPLACE PROCEDURE modificar_producto(
-    producto_id_input INT,
-    nombre_input VARCHAR DEFAULT NULL,
-    descripcion_input VARCHAR DEFAULT NULL,
-    precio_input NUMERIC DEFAULT NULL,
-    imagen_input VARCHAR DEFAULT NULL,
-    descuento_input INT DEFAULT NULL,
-    categoria_id_input INT DEFAULT NULL
-)
-LANGUAGE plpgsql AS $$
+CREATE OR REPLACE PROCEDURE modificar_producto(IN producto_id_input integer, IN nombre_input character varying DEFAULT NULL::character varying, IN descripcion_input character varying DEFAULT NULL::character varying, IN precio_input numeric DEFAULT NULL::numeric, IN imagen_input character varying DEFAULT NULL::character varying, IN descuento_input integer DEFAULT NULL::integer, IN categoria_id_input integer DEFAULT NULL::integer)
+ LANGUAGE plpgsql
+AS $procedure$
 BEGIN
-    IF NOT es_usuario_logueado() THEN
+    IF NOT compraya.es_usuario_logueado() THEN
         RAISE EXCEPTION 'Error: No hay un usuario logueado.';
     END IF;
 
-    IF obtener_rol_usuario() != 1 THEN
+    IF compraya.obtener_rol_usuario() != 1 THEN
         RAISE EXCEPTION 'Error: No tienes permisos para modificar productos.';
     END IF;
 
@@ -504,28 +647,32 @@ BEGIN
 
     RAISE NOTICE 'Producto con ID % modificado exitosamente.', producto_id_input;
 END;
-$$;
+$procedure$;
 
 
 ----------Eliminar producto (Solo administrador)----------
 
-CREATE OR REPLACE PROCEDURE eliminar_producto(producto_id_input INT)
+CREATE OR REPLACE PROCEDURE eliminar_producto(IN producto_id_input INTEGER)
 LANGUAGE plpgsql AS $$
 BEGIN
-    IF NOT es_usuario_logueado() THEN
+    -- Verificar si hay un usuario logueado
+    IF NOT compraya.es_usuario_logueado() THEN
         RAISE EXCEPTION 'Error: No hay un usuario logueado.';
     END IF;
 
-    IF obtener_rol_usuario() != 1 THEN
+    -- Verificar si el usuario tiene el rol adecuado
+    IF compraya.obtener_rol_usuario() != 1 THEN
         RAISE EXCEPTION 'Error: No tienes permisos para eliminar productos.';
     END IF;
 
+    -- Verificar si el producto existe
     IF NOT EXISTS (
         SELECT 1 FROM compraya.productos WHERE id = producto_id_input
     ) THEN
         RAISE EXCEPTION 'Error: El producto con ID % no existe.', producto_id_input;
     END IF;
 
+    -- Eliminar el producto
     DELETE FROM compraya.productos
     WHERE id = producto_id_input;
 
@@ -536,26 +683,30 @@ $$;
 
 ----------Obtener todos los productos----------
 
-CREATE OR REPLACE PROCEDURE obtener_todos_los_productos()
-LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION compraya.obtener_todos_los_productos()
+ RETURNS SETOF compraya.productos
+ LANGUAGE plpgsql
+AS $function$ 
 DECLARE
-    producto_record RECORD;
-BEGIN
-    FOR producto_record IN 
+    producto_cursor CURSOR FOR
         SELECT id, nombre, descripcion, precio, imagen, descuento, categoria_id
-        FROM compraya.productos
+        FROM compraya.productos;
+    producto_record compraya.productos%ROWTYPE;
+BEGIN
+    OPEN producto_cursor;
+
     LOOP
-        RAISE NOTICE 'ID: %, Nombre: %, Descripción: %, Precio: %, Imagen: %, Descuento: %, Categoría ID: %',
-            producto_record.id,
-            producto_record.nombre,
-            producto_record.descripcion,
-            producto_record.precio,
-            producto_record.imagen,
-            producto_record.descuento,
-            producto_record.categoria_id;
+        FETCH producto_cursor INTO producto_record;
+        EXIT WHEN NOT FOUND;
+
+        -- Retorna cada fila una a una
+        RETURN NEXT producto_record;
     END LOOP;
+
+    CLOSE producto_cursor;
+    RETURN;
 END;
-$$;
+$function$;
 
 ----------Categorización de productos----------
 
@@ -622,15 +773,10 @@ $$;
 
 ----------Productos que tengan descuento x fecha----------
 
-CREATE OR REPLACE FUNCTION obtener_productos_descuento(fecha_actual DATE)
-RETURNS TABLE(
-    id INT,
-    nombre VARCHAR,
-    descripcion VARCHAR,
-    precio_original NUMERIC,
-    precio_descuento NUMERIC,
-    descuento_aplicado INT
-) AS $$
+CREATE OR REPLACE FUNCTION obtener_productos_descuento(fecha_actual date)
+ RETURNS TABLE(id integer, nombre character varying, descripcion character varying, precio_original numeric, precio_descuento numeric, descuento_aplicado integer)
+ LANGUAGE plpgsql
+AS $function$
 BEGIN
     RETURN QUERY
     SELECT 
@@ -641,10 +787,10 @@ BEGIN
         p.precio - (p.precio * d.descuento_porcentaje / 100) AS precio_descuento,
         d.descuento_porcentaje AS descuento_aplicado
     FROM compraya.productos p
-    JOIN descuento_dia d ON p.id = d.producto_id
+    JOIN compraya.descuentos_dia d ON p.id = d.producto_id
     WHERE fecha_actual BETWEEN d.fecha_inicio AND d.fecha_fin;
 END;
-$$ LANGUAGE plpgsql;
+$function$;
 
 ----------Productos más vendidos----------
 
@@ -896,26 +1042,35 @@ $$ LANGUAGE plpgsql;
 
 ----------Crear una factura en el momento en que se haga una venta----------
 
-CREATE OR REPLACE FUNCTION generar_factura_venta()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION generar_factura_venta(carrito_id_input INT)
+RETURNS TABLE(id INT, codigo VARCHAR, fecha DATE, subtotal NUMERIC, impuesto NUMERIC, total NUMERIC, estado VARCHAR, cliente_id INT) AS $$
 DECLARE
     nuevo_carrito RECORD;
     subtotal NUMERIC;
     impuesto NUMERIC;
     total NUMERIC;
+    cliente_id INT;
 BEGIN
+    -- Obtener los datos del carrito
     SELECT * INTO nuevo_carrito 
     FROM compraya.carritos 
-    WHERE id = NEW.carrito_id;
+    WHERE id = carrito_id_input;
 
     IF nuevo_carrito IS NULL THEN
-        RAISE EXCEPTION 'Carrito asociado a la venta no encontrado.';
+        RAISE EXCEPTION 'Carrito con ID % no encontrado.', carrito_id_input;
     END IF;
 
+    -- Obtener el id del cliente asociado al carrito
+    SELECT usuario_id INTO cliente_id
+    FROM compraya.carritos
+    WHERE id = carrito_id_input;
+
+    -- Calcular el subtotal, impuesto y total
     subtotal := nuevo_carrito.total;
-    impuesto := subtotal * 0.19; 
+    impuesto := subtotal * 0.19;  -- Supuesto 19% de IVA
     total := subtotal + impuesto;
 
+    -- Insertar la factura
     INSERT INTO compraya.facturas (
         codigo, 
         fecha, 
@@ -932,71 +1087,174 @@ BEGIN
         total,
         impuesto,
         'PENDIENTE',
-        (SELECT usuario_id FROM compraya.carritos WHERE id = NEW.carrito_id), 
-        NEW.carrito_id
-    );
+        cliente_id, 
+        carrito_id_input
+    ) RETURNING id, codigo, fecha, subtotal, impuesto, total, estado, cliente_id INTO id, codigo, fecha, subtotal, impuesto, total, estado, cliente_id;
 
-    RETURN NEW;
+    -- Retornar la factura generada
+    RETURN NEXT;
 END;
 $$ LANGUAGE plpgsql;
 
-----------Realizar pago----------
 
-CREATE OR REPLACE PROCEDURE registrar_pago(
-    venta_id_input INT,
-    puntos_usados_input INT,
-    efectivo_usado_input NUMERIC
+--------------------------------------------------------Realizar pago--------------------------------------------------------
+---------------------Solo puntos---------------------
+
+CREATE OR REPLACE PROCEDURE registrar_pago_puntos(
+    carrito_id_input INT,
+    puntos_usados_input INT
 )
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql AS $$ 
 DECLARE
-    total_venta NUMERIC;
+    total_carrito NUMERIC;
     puntos_usuario INT;
-    metodo_pago VARCHAR(20);
+    usuario_id INT;
 BEGIN
-    -- Obtener el total de la venta
-    SELECT total INTO total_venta
-    FROM compraya.facturas
-    WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input);
+    -- Obtener el total del carrito y el ID del usuario
+    SELECT total, usuario_id INTO total_carrito, usuario_id
+    FROM compraya.carritos
+    WHERE id = carrito_id_input;
+
+    -- Verificar si el carrito existe
+    IF total_carrito IS NULL THEN
+        RAISE EXCEPTION 'Error: El carrito con ID % no existe.', carrito_id_input;
+    END IF;
 
     -- Obtener los puntos disponibles del usuario
     SELECT puntos INTO puntos_usuario
     FROM compraya.usuarios
-    WHERE id = (SELECT cliente_id FROM facturas WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input));
+    WHERE id = usuario_id;
 
-    -- Validar el pago según el tipo
+    -- Validar que el usuario tenga suficientes puntos
     IF puntos_usados_input > puntos_usuario THEN
         RAISE EXCEPTION 'Error: No tienes suficientes puntos para completar el pago.';
     END IF;
 
-    -- Validar si el pago total es igual al monto de la venta
-    IF puntos_usados_input + efectivo_usado_input != total_venta THEN
-        RAISE EXCEPTION 'Error: El total de puntos y efectivo no coincide con el monto de la venta.';
+    -- Validar que los puntos no sean mayores que el total del carrito
+    IF puntos_usados_input > total_carrito THEN
+        RAISE EXCEPTION 'Error: Los puntos utilizados no pueden ser mayores al total del carrito.';
     END IF;
 
-    -- Registrar el tipo de pago (puntos, efectivo o mixto)
-    IF puntos_usados_input > 0 AND efectivo_usado_input > 0 THEN
-        metodo_pago := 'mixto';
-    ELSIF puntos_usados_input > 0 THEN
-        metodo_pago := 'puntos';
-    ELSIF efectivo_usado_input > 0 THEN
-        metodo_pago := 'efectivo';
-    ELSE
-        RAISE EXCEPTION 'Error: No se ha proporcionado un método de pago válido.';
+    -- Actualizar los puntos del usuario
+    UPDATE compraya.usuarios
+    SET puntos = puntos - puntos_usados_input
+    WHERE id = usuario_id;
+
+    -- Actualizar el estado del carrito a "pagado"
+    UPDATE compraya.carritos
+    SET total = 0  -- El total del carrito se pone a 0 después de realizar el pago
+    WHERE id = carrito_id_input;
+
+    -- Vaciar el carrito eliminando los productos
+    DELETE FROM compraya.ventas
+    WHERE carrito_id = carrito_id_input;
+
+    -- Llamar a la función para generar la factura después de registrar el pago
+    PERFORM compraya.generar_factura_venta(carrito_id_input);
+
+    RAISE NOTICE 'Pago registrado exitosamente con puntos para el carrito % y carrito vaciado. Factura generada.', carrito_id_input;
+END;
+$$;
+
+
+
+
+---------------------Solo efectivo---------------------
+CREATE OR REPLACE PROCEDURE registrar_pago_efectivo(
+    carrito_id_input INT,
+    efectivo_usado_input NUMERIC
+)
+LANGUAGE plpgsql AS $$ 
+DECLARE
+    total_carrito NUMERIC;
+BEGIN
+    -- Obtener el total del carrito
+    SELECT total INTO total_carrito
+    FROM compraya.carritos
+    WHERE id = carrito_id_input;
+
+    -- Verificar si el carrito existe
+    IF total_carrito IS NULL THEN
+        RAISE EXCEPTION 'Error: El carrito con ID % no existe.', carrito_id_input;
     END IF;
 
-    -- Actualizar los puntos del usuario (si se usan puntos)
-    IF puntos_usados_input > 0 THEN
-        UPDATE compraya.usuarios
-        SET puntos = puntos - puntos_usados_input
-        WHERE id = (SELECT cliente_id FROM facturas WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input));
+    -- Validar que el monto de efectivo cubra el total del carrito
+    IF efectivo_usado_input != total_carrito THEN
+        RAISE EXCEPTION 'Error: El monto de efectivo no coincide con el total del carrito.';
     END IF;
 
-    -- Actualizar el estado de la factura a "pagado"
-    UPDATE compraya.facturas
-    SET estado = 'pagado'
-    WHERE carrito_id = (SELECT carrito_id FROM ventas WHERE id = venta_id_input);
+    -- Actualizar el estado del carrito a "pagado"
+    UPDATE compraya.carritos
+    SET total = 0  -- El total del carrito se pone a 0 después de realizar el pago
+    WHERE id = carrito_id_input;
 
-    RAISE NOTICE 'Pago registrado exitosamente con método %.', metodo_pago;
+    -- Vaciar el carrito eliminando los productos
+    DELETE FROM compraya.ventas
+    WHERE carrito_id = carrito_id_input;
+
+    -- Llamar a la función para generar la factura después de registrar el pago
+    PERFORM compraya.generar_factura_venta(carrito_id_input);
+
+    RAISE NOTICE 'Pago registrado exitosamente con efectivo para el carrito % y carrito vaciado. Factura generada.', carrito_id_input;
+END;
+$$;
+
+
+---------------------Ambos---------------------
+CREATE OR REPLACE PROCEDURE registrar_pago_mixto(
+    carrito_id_input INT,
+    puntos_usados_input INT,
+    efectivo_usado_input NUMERIC
+)
+LANGUAGE plpgsql AS $$ 
+DECLARE
+    total_carrito NUMERIC;
+    puntos_usuario INT;
+    usuario_id INT;
+BEGIN
+    -- Obtener el total del carrito
+    SELECT total, usuario_id INTO total_carrito, usuario_id
+    FROM compraya.carritos
+    WHERE id = carrito_id_input;
+
+    -- Verificar si el carrito existe
+    IF total_carrito IS NULL THEN
+        RAISE EXCEPTION 'Error: El carrito con ID % no existe.', carrito_id_input;
+    END IF;
+
+    -- Obtener los puntos disponibles del usuario
+    SELECT puntos INTO puntos_usuario
+    FROM compraya.usuarios
+    WHERE id = usuario_id;
+
+    -- Validar que los puntos no sean mayores que el total del carrito
+    IF puntos_usados_input > total_carrito THEN
+        RAISE EXCEPTION 'Error: Los puntos utilizados no pueden ser mayores al total del carrito.';
+    END IF;
+
+    -- Validar que la suma de puntos y efectivo cubra el total del carrito
+    IF puntos_usados_input + efectivo_usado_input != total_carrito THEN
+        RAISE EXCEPTION 'Error: El total de puntos y efectivo no coincide con el monto del carrito.';
+    END IF;
+
+    -- Actualizar los puntos del usuario
+    UPDATE compraya.usuarios
+    SET puntos = puntos - puntos_usados_input
+    WHERE id = usuario_id;
+
+    -- Actualizar el estado del carrito a "pagado"
+    UPDATE compraya.carritos
+    SET total = 0  -- El total del carrito se pone a 0 después de realizar el pago
+    WHERE id = carrito_id_input;
+
+    -- Vaciar el carrito eliminando los productos
+    DELETE FROM compraya.ventas
+    WHERE carrito_id = carrito_id_input;
+
+    -- Llamar a la función para generar la factura después de registrar el pago
+    PERFORM compraya.generar_factura_venta_manual(carrito_id_input);
+
+    RAISE NOTICE 'Pago registrado exitosamente con puntos y efectivo para el carrito % y carrito vaciado. Factura generada.', carrito_id_input;
 END;
 $$;
 
@@ -1004,30 +1262,52 @@ $$;
 ----------------------------------- Carrito -----------------------------------
 ----------Crear carrito----------
 
-CREATE OR REPLACE PROCEDURE crear_carrito(
-    p_usuario_id INT
-)
+CREATE OR REPLACE PROCEDURE crear_carrito()
 LANGUAGE plpgsql
 AS $$
 DECLARE
     carrito_existente INT;
+    numero_documento VARCHAR;
+    usuario_id INT;
 BEGIN
+    -- Obtener el número de documento del usuario logueado
+    SELECT numero_documento INTO numero_documento
+    FROM sesiones_usuario
+    ORDER BY ultima_actividad DESC
+    LIMIT 1;  -- Obtenemos el último usuario logueado
+
+    -- Verificar si se encontró un número de documento (es decir, si hay una sesión activa)
+    IF numero_documento IS NULL THEN
+        RAISE EXCEPTION 'Error: No hay un usuario logueado.';
+    END IF;
+
+    -- Obtener el usuario_id a partir del numero_documento
+    SELECT id INTO usuario_id
+    FROM compraya.usuarios
+    WHERE numero_documento = numero_documento;
+
+    -- Verificar si el usuario existe
+    IF usuario_id IS NULL THEN
+        RAISE EXCEPTION 'Error: Usuario no encontrado.';
+    END IF;
+
     -- Verificar si el usuario ya tiene un carrito
     SELECT id INTO carrito_existente
     FROM compraya.carritos
-    WHERE usuario_id = p_usuario_id;
+    WHERE usuario_id = usuario_id;
 
     IF carrito_existente IS NOT NULL THEN
-        RAISE NOTICE 'El usuario con ID % ya tiene un carrito (Carrito ID: %)', p_usuario_id, carrito_existente;
+        RAISE NOTICE 'El usuario con número de documento % ya tiene un carrito (Carrito ID: %)', numero_documento, carrito_existente;
     ELSE
         -- Crear un nuevo carrito para el usuario
         INSERT INTO compraya.carritos (cantidad, total, usuario_id)
-        VALUES (0, 0, p_usuario_id);
+        VALUES (0, 0, usuario_id);
 
-        RAISE NOTICE 'Carrito creado exitosamente para el usuario con ID %', p_usuario_id;
+        RAISE NOTICE 'Carrito creado exitosamente para el usuario con número de documento %', numero_documento;
     END IF;
 END;
 $$;
+
 
 CREATE OR REPLACE FUNCTION crear_carrito_automatically()
 RETURNS TRIGGER AS $$
@@ -1347,6 +1627,27 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+----------Todas las auditorías----------
+
+CREATE OR REPLACE PROCEDURE ver_todas_auditorias()
+LANGUAGE plpgsql AS $$
+BEGIN
+    -- Imprimir todas las auditorías de la tabla
+    RAISE NOTICE 'Listado de todas las auditorías:';
+    
+    -- Seleccionar todas las auditorías
+    FOR record IN
+        SELECT id, accion, usuario_id, factura_id, fecha, detalle
+        FROM compraya.auditorias
+    LOOP
+        -- Mostrar los resultados uno por uno
+        RAISE NOTICE 'ID: %, Acción: %, Usuario ID: %, Factura ID: %, Fecha: %, Detalle: %', 
+            record.id, record.accion, record.usuario_id, record.factura_id, record.fecha, record.detalle;
+    END LOOP;
+END;
+$$;
+
+
 
 ----------Triggers----------
 ----Trigger 1----
@@ -1385,6 +1686,8 @@ CREATE TRIGGER trigger_crear_carrito
 AFTER INSERT ON compraya.usuarios
 FOR EACH ROW
 EXECUTE FUNCTION compraya.crear_carrito_automatically();
+
+
 
 
 
@@ -1713,6 +2016,9 @@ select * from usuarios;
 select * from productos;
 select * from inventarios;
 select * from carritos;
+select * from categorias;
+select * from ventas;
+select * from facturas;
 
 
 drop table productos;
@@ -1721,8 +2027,19 @@ drop table ventas;
 drop table historial_puntos;
 drop table descuentos_dia;
 
-call establecer_sesion('12345');
+INSERT INTO compraya.inventarios (cantidad_disponible, referencia_compra, producto_id) 
+VALUES 
+(ROUND(random() * 100) + 1, 'REF_' || 2 || '_', 2),
+(ROUND(random() * 100) + 1, 'REF_' || 14 || '_', 14),
+(ROUND(random() * 100) + 1, 'REF_' || 15 || '_', 15),
+(ROUND(random() * 100) + 1, 'REF_' || 16 || '_', 16),
+(ROUND(random() * 100) + 1, 'REF_' || 17 || '_', 17),
+(ROUND(random() * 100) + 1, 'REF_' || 20 || '_', 20),
+(ROUND(random() * 100) + 1, 'REF_' || 21 || '_', 21),
+(ROUND(random() * 100) + 1, 'REF_' || 22 || '_', 22);
 
 
-call guardar_historial_puntos_json(1);
 
+
+
+SELECT * FROM consultar_inventario(14);

@@ -8,6 +8,7 @@ import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Scanner;
 
 /**
  *
@@ -16,19 +17,33 @@ import java.sql.SQLException;
 public class Carrito {
     private static Connection conexion;
 
-    public Carrito(Connection conexion) {
-        this.conexion = conexion;
+    public Carrito(Connection conexion1) {
+        this.conexion = conexion1;
     }
     
-    public static void agregarProductoAlCarrito(int usuarioId, int productoId, int cantidad) {
+    public static void agregarProductoAlCarrito() {
+        Scanner scanner = new Scanner(System.in);  // Crear un escáner para leer entradas desde consola
+
+        // Pedir los datos al usuario
+        System.out.print("Ingresa el ID del usuario: ");
+        int usuarioId = scanner.nextInt();  // Leer el usuarioId desde consola
+
+        System.out.print("Ingresa el ID del producto: ");
+        int productoId = scanner.nextInt();  // Leer el productoId desde consola
+
+        System.out.print("Ingresa la cantidad: ");
+        int cantidad = scanner.nextInt();  // Leer la cantidad desde consola
+
         CallableStatement stmt = null;
         try {
             stmt = conexion.prepareCall("CALL compraya.agregar_producto_al_carrito(?, ?, ?)");
 
+            // Establecer los parámetros para la llamada al procedimiento
             stmt.setInt(1, usuarioId);
             stmt.setInt(2, productoId);
             stmt.setInt(3, cantidad);
 
+            // Ejecutar el procedimiento
             stmt.execute();
             System.out.println("Producto agregado al carrito exitosamente.");
 
@@ -37,20 +52,29 @@ public class Carrito {
         } finally {
             try {
                 if (stmt != null) stmt.close();
-                if (conexion != null) conexion.close();
+                // No es necesario cerrar la conexión aquí si la conexión se maneja globalmente
+                // if (conexion != null) conexion.close();
             } catch (SQLException e) {
                 System.err.println("Error al cerrar la conexión: " + e.getMessage());
             }
         }
     }
     
-    public static void eliminarProductoDelCarrito(int carritoId, int productoId) {
+    public static void eliminarProductoDelCarrito() {
+        Scanner scanner = new Scanner(System.in);  // Crear un escáner para leer entradas desde consola
+
+        // Pedir los datos al usuario
+        System.out.print("Ingresa el ID del carrito: ");
+        int carritoId = scanner.nextInt();  // Leer el carritoId desde consola
+
+        System.out.print("Ingresa el ID del producto a eliminar: ");
+        int productoId = scanner.nextInt();  // Leer el productoId desde consola
+
         CallableStatement stmt = null;
         try {
-            // Llamada al procedimiento almacenado en PostgreSQL
             stmt = conexion.prepareCall("CALL compraya.eliminar_producto_del_carrito(?, ?)");
 
-            // Establecer los parámetros para el procedimiento
+            // Establecer los parámetros para la llamada al procedimiento
             stmt.setInt(1, carritoId);
             stmt.setInt(2, productoId);
 
@@ -59,19 +83,25 @@ public class Carrito {
             System.out.println("Producto con ID " + productoId + " eliminado del carrito con ID " + carritoId + " exitosamente.");
 
         } catch (SQLException e) {
-            // Manejo de excepciones
             System.err.println("Error al eliminar el producto del carrito: " + e.getMessage());
         } finally {
             try {
                 if (stmt != null) stmt.close();
-                if (conexion != null) conexion.close();
+                // No es necesario cerrar la conexión aquí si la conexión se maneja globalmente
+                // if (conexion != null) conexion.close();
             } catch (SQLException e) {
                 System.err.println("Error al cerrar la conexión: " + e.getMessage());
             }
         }
     }
     
-    public static void obtenerProductosEnCarrito(int carritoId) {
+    public static void obtenerProductosEnCarrito() { 
+        Scanner scanner = new Scanner(System.in);  // Crear un escáner para leer entradas desde consola
+
+        // Pedir el carritoId al usuario
+        System.out.print("Ingresa el ID del carrito: ");
+        int carritoId = scanner.nextInt();  // Leer el carritoId desde consola
+
         CallableStatement stmt = null;
         ResultSet rs = null;
         try {
@@ -101,20 +131,26 @@ public class Carrito {
             try {
                 if (rs != null) rs.close();
                 if (stmt != null) stmt.close();
-                if (conexion != null) conexion.close();
+                // No es necesario cerrar la conexión aquí si la conexión se maneja globalmente
+                // if (conexion != null) conexion.close();
             } catch (SQLException e) {
                 System.err.println("Error al cerrar la conexión: " + e.getMessage());
             }
         }
     }
     
-    public static void vaciarCarrito(int carritoId) {
+     public static void vaciarCarrito() {
+        Scanner scanner = new Scanner(System.in);  // Crear un escáner para leer entradas desde consola
+
+        // Pedir el ID del carrito al usuario
+        System.out.print("Ingresa el ID del carrito que deseas vaciar: ");
+        int carritoId = scanner.nextInt();  // Leer el carritoId desde consola
+
         CallableStatement stmt = null;
         try {
-            // Preparar la llamada al procedimiento
             stmt = conexion.prepareCall("CALL compraya.vaciar_carrito(?)");
 
-            // Establecer el parámetro del procedimiento
+            // Establecer el parámetro para la llamada al procedimiento
             stmt.setInt(1, carritoId);
 
             // Ejecutar el procedimiento
@@ -126,7 +162,8 @@ public class Carrito {
         } finally {
             try {
                 if (stmt != null) stmt.close();
-                if (conexion != null) conexion.close();
+                // No es necesario cerrar la conexión aquí si la conexión se maneja globalmente
+                // if (conexion != null) conexion.close();
             } catch (SQLException e) {
                 System.err.println("Error al cerrar la conexión: " + e.getMessage());
             }

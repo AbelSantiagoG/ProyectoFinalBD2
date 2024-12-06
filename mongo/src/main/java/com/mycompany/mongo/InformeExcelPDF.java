@@ -32,8 +32,8 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 public class InformeExcelPDF {
     private static Connection conexion;
 
-    public InformeExcelPDF(Connection conexion) {
-        this.conexion = conexion;
+    public InformeExcelPDF(Connection conexion1) {
+        this.conexion = conexion1;
     }
     
     public static class Informe {
