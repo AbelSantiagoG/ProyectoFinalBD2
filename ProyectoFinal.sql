@@ -126,17 +126,21 @@ create table ventas(
 	producto_id int references productos(id)
 );
 
-create table facturas(
-	id int primary key default nextval('facturaSecuencia'),
-	codigo varchar(30) unique not null,
-	fecha date,
-	subtotal int,
-	total int,
-	impuesto int,
-	estado estado_factura,
-	cliente_id int references usuarios(id),
-	carrito_id int references carritos(id)
+CREATE TABLE compraya.facturas (
+    id SERIAL PRIMARY KEY,
+    codigo VARCHAR(30) UNIQUE NOT NULL,
+    fecha DATE,
+    subtotal NUMERIC,
+    total NUMERIC,
+    impuesto NUMERIC,
+    estado VARCHAR(20),
+    cliente_id INT REFERENCES compraya.usuarios(id),
+    carrito_id INT REFERENCES compraya.carritos(id)
 );
+
+ALTER TABLE compraya.facturas
+ADD COLUMN impuesto NUMERIC;
+
 
 create table puntos_redimidos(
 	id int primary key default nextval('puntosRedimidosSecuencia'),
@@ -1042,59 +1046,51 @@ $$ LANGUAGE plpgsql;
 
 ----------Crear una factura en el momento en que se haga una venta----------
 
-CREATE OR REPLACE FUNCTION generar_factura_venta(carrito_id_input INT)
-RETURNS TABLE(id INT, codigo VARCHAR, fecha DATE, subtotal NUMERIC, impuesto NUMERIC, total NUMERIC, estado VARCHAR, cliente_id INT) AS $$
+CREATE OR REPLACE FUNCTION compraya.generar_factura_venta(carrito_id_input INT)
+RETURNS VOID AS $$
 DECLARE
-    nuevo_carrito RECORD;
-    subtotal NUMERIC;
-    impuesto NUMERIC;
-    total NUMERIC;
-    cliente_id INT;
+    v_usuario_id INT;
+    v_total NUMERIC;
+    v_subtotal NUMERIC;
+    v_impuesto NUMERIC;
 BEGIN
-    -- Obtener los datos del carrito
-    SELECT * INTO nuevo_carrito 
-    FROM compraya.carritos 
-    WHERE id = carrito_id_input;
+    -- Obtener el usuario_id y el total del carrito
+    SELECT c.usuario_id, c.total INTO v_usuario_id, v_total
+    FROM compraya.carritos c
+    WHERE c.id = carrito_id_input;
 
-    IF nuevo_carrito IS NULL THEN
-        RAISE EXCEPTION 'Carrito con ID % no encontrado.', carrito_id_input;
+    -- Verificar si el carrito existe y tiene un usuario asociado
+    IF v_usuario_id IS NULL THEN
+        RAISE EXCEPTION 'Carrito no encontrado o no tiene usuario asociado.';
     END IF;
 
-    -- Obtener el id del cliente asociado al carrito
-    SELECT usuario_id INTO cliente_id
-    FROM compraya.carritos
-    WHERE id = carrito_id_input;
+    -- Calcular el subtotal (en este caso, podría ser el total del carrito)
+    v_subtotal := v_total;
 
-    -- Calcular el subtotal, impuesto y total
-    subtotal := nuevo_carrito.total;
-    impuesto := subtotal * 0.19;  -- Supuesto 19% de IVA
-    total := subtotal + impuesto;
+    -- Calcular el impuesto, si lo deseas. En este ejemplo, lo calculamos como el 16% del subtotal.
+    v_impuesto := v_subtotal * 0.16;
 
-    -- Insertar la factura
-    INSERT INTO compraya.facturas (
-        codigo, 
-        fecha, 
-        subtotal, 
-        total, 
-        impuesto, 
-        estado, 
-        cliente_id, 
-        carrito_id
-    ) VALUES (
+    -- Aquí podrías generar el código de la factura. En este caso, usamos una secuencia de ID.
+    INSERT INTO compraya.facturas (codigo, fecha, subtotal, total, impuesto, estado, cliente_id, carrito_id)
+    VALUES (
         CONCAT('FAC-', nextval('compraya.facturaSecuencia')),
         CURRENT_DATE,
-        subtotal,
-        total,
-        impuesto,
-        'PENDIENTE',
-        cliente_id, 
-        carrito_id_input
-    ) RETURNING id, codigo, fecha, subtotal, impuesto, total, estado, cliente_id INTO id, codigo, fecha, subtotal, impuesto, total, estado, cliente_id;
+        v_subtotal,
+        v_subtotal + v_impuesto, -- Total = subtotal + impuesto
+        v_impuesto,
+        'PAGADA',  -- El estado de la factura será 'PAGADO'
+        v_usuario_id,  -- Cliente_id es el usuario_id
+        carrito_id_input  -- Referenciamos el carrito con su ID
+    );
 
-    -- Retornar la factura generada
-    RETURN NEXT;
+    -- Aquí, podrías continuar con cualquier otra lógica adicional necesaria.
+
+    RAISE NOTICE 'Factura generada para el usuario % con total %', v_usuario_id, v_total;
 END;
 $$ LANGUAGE plpgsql;
+
+
+
 
 
 --------------------------------------------------------Realizar pago--------------------------------------------------------
@@ -1142,7 +1138,7 @@ BEGIN
 
     -- Actualizar el estado del carrito a "pagado"
     UPDATE compraya.carritos
-    SET total = 0  -- El total del carrito se pone a 0 después de realizar el pago
+    SET total = total_carrito - puntos_usados_input  -- Descontamos los puntos del total
     WHERE id = carrito_id_input;
 
     -- Vaciar el carrito eliminando los productos
@@ -1155,6 +1151,7 @@ BEGIN
     RAISE NOTICE 'Pago registrado exitosamente con puntos para el carrito % y carrito vaciado. Factura generada.', carrito_id_input;
 END;
 $$;
+
 
 
 
@@ -1183,21 +1180,26 @@ BEGIN
         RAISE EXCEPTION 'Error: El monto de efectivo no coincide con el total del carrito.';
     END IF;
 
-    -- Actualizar el estado del carrito a "pagado"
+    -- Guardar el total del carrito antes del pago en la columna total_antes_pago
     UPDATE compraya.carritos
-    SET total = 0  -- El total del carrito se pone a 0 después de realizar el pago
+    SET total_antes_pago = total,  -- Guardamos el total original
+        total = 0,  -- El total del carrito se pone a 0 después de realizar el pago
+        total_efectivo = efectivo_usado_input  -- Registramos el monto del pago en efectivo
     WHERE id = carrito_id_input;
 
     -- Vaciar el carrito eliminando los productos
     DELETE FROM compraya.ventas
     WHERE carrito_id = carrito_id_input;
 
-    -- Llamar a la función para generar la factura después de registrar el pago
+    -- Llamar a la función de generar la factura
     PERFORM compraya.generar_factura_venta(carrito_id_input);
 
-    RAISE NOTICE 'Pago registrado exitosamente con efectivo para el carrito % y carrito vaciado. Factura generada.', carrito_id_input;
+    RAISE NOTICE 'Pago registrado exitosamente con efectivo para el carrito % y carrito vaciado.', carrito_id_input;
 END;
 $$;
+
+
+
 
 
 ---------------------Ambos---------------------
@@ -1212,7 +1214,7 @@ DECLARE
     puntos_usuario INT;
     usuario_id INT;
 BEGIN
-    -- Obtener el total del carrito
+    -- Obtener el total del carrito y el ID del usuario
     SELECT total, usuario_id INTO total_carrito, usuario_id
     FROM compraya.carritos
     WHERE id = carrito_id_input;
@@ -1227,14 +1229,14 @@ BEGIN
     FROM compraya.usuarios
     WHERE id = usuario_id;
 
-    -- Validar que los puntos no sean mayores que el total del carrito
-    IF puntos_usados_input > total_carrito THEN
-        RAISE EXCEPTION 'Error: Los puntos utilizados no pueden ser mayores al total del carrito.';
-    END IF;
-
     -- Validar que la suma de puntos y efectivo cubra el total del carrito
     IF puntos_usados_input + efectivo_usado_input != total_carrito THEN
         RAISE EXCEPTION 'Error: El total de puntos y efectivo no coincide con el monto del carrito.';
+    END IF;
+
+    -- Validar que los puntos no sean mayores que el total del carrito
+    IF puntos_usados_input > total_carrito THEN
+        RAISE EXCEPTION 'Error: Los puntos utilizados no pueden ser mayores al total del carrito.';
     END IF;
 
     -- Actualizar los puntos del usuario
@@ -1244,7 +1246,7 @@ BEGIN
 
     -- Actualizar el estado del carrito a "pagado"
     UPDATE compraya.carritos
-    SET total = 0  -- El total del carrito se pone a 0 después de realizar el pago
+    SET total = total_carrito - puntos_usados_input  -- Descontamos los puntos del total
     WHERE id = carrito_id_input;
 
     -- Vaciar el carrito eliminando los productos
@@ -1252,11 +1254,12 @@ BEGIN
     WHERE carrito_id = carrito_id_input;
 
     -- Llamar a la función para generar la factura después de registrar el pago
-    PERFORM compraya.generar_factura_venta_manual(carrito_id_input);
+    PERFORM compraya.generar_factura_venta(carrito_id_input);
 
     RAISE NOTICE 'Pago registrado exitosamente con puntos y efectivo para el carrito % y carrito vaciado. Factura generada.', carrito_id_input;
 END;
 $$;
+
 
 
 ----------------------------------- Carrito -----------------------------------
@@ -1299,9 +1302,9 @@ BEGIN
     IF carrito_existente IS NOT NULL THEN
         RAISE NOTICE 'El usuario con número de documento % ya tiene un carrito (Carrito ID: %)', numero_documento, carrito_existente;
     ELSE
-        -- Crear un nuevo carrito para el usuario
-        INSERT INTO compraya.carritos (cantidad, total, usuario_id)
-        VALUES (0, 0, usuario_id);
+        -- Crear un nuevo carrito para el usuario con total_efectivo y total_antes_pago a 0
+        INSERT INTO compraya.carritos (cantidad, total, usuario_id, total_efectivo, total_antes_pago)
+        VALUES (0, 0, usuario_id, 0, 0);
 
         RAISE NOTICE 'Carrito creado exitosamente para el usuario con número de documento %', numero_documento;
     END IF;
@@ -1365,7 +1368,13 @@ BEGIN
     -- Paso 5: Actualizar el total del carrito
     UPDATE compraya.carritos
     SET total = (
-        SELECT SUM(p.precio * v.cantidad)
+        SELECT COALESCE(SUM(p.precio * v.cantidad), 0) 
+        FROM compraya.ventas v
+        JOIN compraya.productos p ON v.producto_id = p.id
+        WHERE v.carrito_id = v_carrito_id
+    ),
+    total_antes_pago = (
+        SELECT COALESCE(SUM(p.precio * v.cantidad), 0) 
         FROM compraya.ventas v
         JOIN compraya.productos p ON v.producto_id = p.id
         WHERE v.carrito_id = v_carrito_id
@@ -1388,19 +1397,27 @@ CREATE OR REPLACE PROCEDURE eliminar_producto_del_carrito(
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    -- Eliminar el producto del carrito
     DELETE FROM compraya.ventas
     WHERE carrito_id = p_carrito_id
     AND producto_id = p_producto_id;
 
+    -- Actualizar el total del carrito y las columnas adicionales
     UPDATE compraya.carritos
-    SET total = (SELECT SUM(p.precio * v.cantidad) FROM compraya.ventas v
+    SET total = (SELECT SUM(p.precio * v.cantidad) 
+                 FROM compraya.ventas v
                  JOIN compraya.productos p ON v.producto_id = p.id
-                 WHERE v.carrito_id = p_carrito_id)
+                 WHERE v.carrito_id = p_carrito_id),
+        total_antes_pago = (SELECT SUM(p.precio * v.cantidad) 
+                            FROM compraya.ventas v
+                            JOIN compraya.productos p ON v.producto_id = p.id
+                            WHERE v.carrito_id = p_carrito_id)
     WHERE id = p_carrito_id;
     
     COMMIT;
 END;
 $$;
+
 
 ----------Ver productos del carrito----------
 
@@ -1409,7 +1426,9 @@ RETURNS TABLE (
     producto_id INT,
     nombre_producto VARCHAR,
     cantidad INT,
-    total_producto NUMERIC
+    total_producto NUMERIC,
+    total_efectivo NUMERIC, -- Nuevo campo
+    total_antes_pago NUMERIC -- Nuevo campo
 ) AS $$
 BEGIN
     RETURN QUERY
@@ -1417,15 +1436,20 @@ BEGIN
         v.producto_id,
         p.nombre AS nombre_producto,
         v.cantidad,
-        p.precio * v.cantidad AS total_producto
+        p.precio * v.cantidad AS total_producto,
+        c.total_efectivo,  -- Incluir el total_efectivo
+        c.total_antes_pago  -- Incluir el total_antes_pago
     FROM 
         compraya.ventas v
     JOIN 
         compraya.productos p ON v.producto_id = p.id
+    JOIN 
+        compraya.carritos c ON v.carrito_id = c.id
     WHERE 
         v.carrito_id = p_carrito_id;
 END;
 $$ LANGUAGE plpgsql;
+
 
 ----------Vaciar carrito----------
 
@@ -1449,23 +1473,23 @@ $$;
 ----------------------------------- Historiales -----------------------------------
 ----Punto 13----
 
-CREATE OR REPLACE FUNCTION compraya.trigger_historial_puntos_ganados()
- RETURNS trigger
- LANGUAGE plpgsql
-AS $function$
+CREATE OR REPLACE FUNCTION trigger_historial_compras()
+RETURNS TRIGGER AS $$
 BEGIN
-    -- Si la tabla origen no tiene `venta_id`, omítelo
-    INSERT INTO compraya.historial_puntos (usuario_id, cantidad, fecha, motivo)
+    INSERT INTO compraya.historial_compras (cliente_id, fecha, total_efectivo, puntos_redimidos, carrito_id, factura_id)
     VALUES (
-        NEW.usuario_id,
-        NEW.cantidad,
-        NEW.fecha_ganacia,  -- O `fecha_redencion` dependiendo de la tabla
-        NEW.motivo
+        NEW.cliente_id,
+        NEW.fecha,
+        NEW.total,  -- El total de la factura
+        0,  -- Si no estás usando puntos, puedes ponerlo a 0
+        NEW.carrito_id,
+        NEW.id
     );
     RETURN NEW;
 END;
-$function$
-;
+$$ LANGUAGE plpgsql;
+
+
 
 CREATE OR REPLACE FUNCTION compraya.trigger_historial_puntos_redimidos()
  RETURNS trigger
@@ -1506,19 +1530,42 @@ $function$
 
 CREATE OR REPLACE FUNCTION trigger_historial_compras()
 RETURNS TRIGGER AS $$
+DECLARE
+    total_efectivo NUMERIC := 0;
+    puntos_redimidos INT := 0;
 BEGIN
-    INSERT INTO compraya.historial_compras (cliente_id, fecha, total_efectivo, puntos_redimidos, carrito_id, factura_id)
+    -- Aquí obtenemos el monto pagado en efectivo y los puntos redimidos directamente del carrito
+    SELECT total INTO total_efectivo
+    FROM compraya.carritos
+    WHERE id = NEW.carrito_id;
+
+    -- Obtener los puntos redimidos desde la tabla carritos
+    SELECT puntos INTO puntos_redimidos
+    FROM compraya.carritos
+    WHERE id = NEW.carrito_id;
+
+    -- Insertamos los datos en la tabla historial_compras
+    INSERT INTO compraya.historial_compras (
+        cliente_id, 
+        fecha, 
+        total_efectivo, 
+        puntos_redimidos, 
+        carrito_id, 
+        factura_id
+    )
     VALUES (
-        NEW.cliente_id,
-        NEW.fecha,
-        0,  -- Debería capturar el monto real pagado en efectivo
-        0,  -- Capturar los puntos redimidos durante la compra
+        NEW.cliente_id, 
+        NEW.fecha, 
+        total_efectivo,  -- Usamos el valor calculado para el pago en efectivo
+        puntos_redimidos,  -- Usamos el valor calculado para los puntos redimidos
         NEW.carrito_id,
         NEW.id
     );
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
 
 CREATE OR REPLACE FUNCTION mostrar_historial_compras(p_cliente_id INT)
 RETURNS TABLE (
@@ -1651,10 +1698,10 @@ $$;
 
 ----------Triggers----------
 ----Trigger 1----
-CREATE TRIGGER crear_factura_tras_venta
-AFTER INSERT ON compraya.ventas
-FOR EACH ROW
-EXECUTE FUNCTION generar_factura_venta();
+--CREATE TRIGGER crear_factura_tras_venta
+--AFTER INSERT ON compraya.ventas
+--FOR EACH ROW
+--EXECUTE FUNCTION generar_factura_venta();
 
 ----Punto 13----
 CREATE TRIGGER trigger_puntos_ganados
@@ -2039,7 +2086,7 @@ VALUES
 (ROUND(random() * 100) + 1, 'REF_' || 22 || '_', 22);
 
 
-
-
+ALTER TABLE compraya.carritos
+ADD COLUMN total_efectivo NUMERIC DEFAULT 0;
 
 SELECT * FROM consultar_inventario(14);
