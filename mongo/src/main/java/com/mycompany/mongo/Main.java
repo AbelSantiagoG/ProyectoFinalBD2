@@ -166,6 +166,9 @@ public class Main {
                     break;
                 case 6:
                     usuario.eliminarUsuario();
+                    System.out.println("Hasta luego");
+                    conexion.close();
+                    salir = true;
                     break;
                 case 7:
                     System.out.println("Ingrese el id de la factura");

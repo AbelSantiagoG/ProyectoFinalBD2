@@ -280,8 +280,14 @@ public class Usuario {
         return numeroDocumento;
     }
     
-    public static void eliminarUsuario() {
+    public static void eliminarUsuario() throws SQLException {
+        restablecerConexion(); // Asegúrate de que la conexión esté activa
+
         String numeroDocumento = obtenerNumeroDocumentoLogueado();
+        if (numeroDocumento == null) {
+            System.err.println("No se puede eliminar usuario: no hay usuario logueado.");
+            return;
+        }
 
         CallableStatement stmt = null;
         try {
@@ -301,6 +307,23 @@ public class Usuario {
             }
         }
     }
+    
+    public static void restablecerConexion() throws SQLException {
+        if (conexion == null || conexion.isClosed()) {
+            try {
+                // Configura estos valores según tu base de datos
+                String url = "jdbc:postgresql://localhost:5432/postgres";
+                String user = "postgres";
+                String password = "elpepe1234";
+
+                conexion = DriverManager.getConnection(url, user, password);
+                System.out.println("Conexión restablecida exitosamente.");
+            } catch (SQLException e) {
+                System.err.println("Error al restablecer la conexión: " + e.getMessage());
+            }
+        }
+    }
+
 
     
 }

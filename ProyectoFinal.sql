@@ -127,6 +127,7 @@ create table ventas(
 	producto_id int references productos(id)
 );
 
+
 CREATE TABLE compraya.facturas (
     id SERIAL PRIMARY KEY,
     codigo VARCHAR(30) UNIQUE NOT NULL,
@@ -1950,7 +1951,7 @@ SELECT * FROM mostrar_informes_creados();
 
 ------------Registros para pruebitas------------
 
-INSERT INTO usuarios (numero_documento, nombre, contrasenia, email, celular, puntos, rol) VALUES
+INSERT INTO usuarios (numero_documento, nombre, contrasenia, email, celular, puntos, rol) values
 ('1234567890', 'Juan Perez', 'password1', 'juan.perez@gmail.com', '3001234567', 50, 0),
 ('0987654321', 'Maria Gomez', 'password2', 'maria.gomez@gmail.com', '3107654321', 40, 0),
 ('1122334455', 'Luis Alvarez', 'password3', 'luis.alvarez@gmail.com', '3201122334', 60, 0),
@@ -1960,7 +1961,8 @@ INSERT INTO usuarios (numero_documento, nombre, contrasenia, email, celular, pun
 ('9988776655', 'Felipe Herrera', 'password7', 'felipe.herrera@gmail.com', '3129988776', 90, 0),
 ('8877665544', 'Sofia Martinez', 'password8', 'sofia.martinez@gmail.com', '3038877665', 20, 0),
 ('7766554433', 'Andres Torres', 'password9', 'andres.torres@gmail.com', '3137766554', 10, 0),
-('1', 'admin', '12345678', 'admin@gmail.com', '305', 999999, 1);
+ ('1', 'admin', '12345678', 'admin@gmail.com', '305', 999999, 1);
+
 
 INSERT INTO categorias (nombre) VALUES
 ('Electrónica'),
