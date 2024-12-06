@@ -994,6 +994,42 @@ $$;
 
 
 ----------------------------------- Carrito -----------------------------------
+----------Crear carrito----------
+
+CREATE OR REPLACE PROCEDURE crear_carrito(
+    p_usuario_id INT
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    carrito_existente INT;
+BEGIN
+    -- Verificar si el usuario ya tiene un carrito
+    SELECT id INTO carrito_existente
+    FROM compraya.carritos
+    WHERE usuario_id = p_usuario_id;
+
+    IF carrito_existente IS NOT NULL THEN
+        RAISE NOTICE 'El usuario con ID % ya tiene un carrito (Carrito ID: %)', p_usuario_id, carrito_existente;
+    ELSE
+        -- Crear un nuevo carrito para el usuario
+        INSERT INTO compraya.carritos (cantidad, total, usuario_id)
+        VALUES (0, 0, p_usuario_id);
+
+        RAISE NOTICE 'Carrito creado exitosamente para el usuario con ID %', p_usuario_id;
+    END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION crear_carrito_automatically()
+RETURNS TRIGGER AS $$
+BEGIN
+    CALL compraya.crear_carrito(NEW.id);
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 
 ----------Agregar producto al carrito----------
 
@@ -1273,6 +1309,13 @@ CREATE TRIGGER trigger_auditoria_factura
 AFTER INSERT ON compraya.facturas
 FOR EACH ROW
 EXECUTE FUNCTION registrar_auditoria_factura();
+
+--Crear carrito después de un register--
+CREATE TRIGGER trigger_crear_carrito
+AFTER INSERT ON compraya.usuarios
+FOR EACH ROW
+EXECUTE FUNCTION compraya.crear_carrito_automatically();
+
 
 
 ----------------------------------- Factura -----------------------------------
