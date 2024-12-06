@@ -58,7 +58,18 @@ public class Compraya {
             //            } else {
             //                System.out.println("No se pudo generar el XML para la factura con ID " + facturaId);
             //            }
-        obtenerTodosLosProductos();
+            
+            
+        //obtenerTodosLosProductos();
+        //insertarPuntosRedimidos(10, Date.valueOf("2024-11-01"), 1);
+        //insertarPuntosGanados(20, Date.valueOf("2024-11-02"), "Compra", "FAC001", 1);
+        //mostrarHistorialPuntos(1);
+        
+        //mostrarHistorialCompras(1);
+       //crearVenta(1, 6);
+            //guardarPuntosJson(1);
+            //guardarVentasJson(1);
+            mostrarJsonInforme();
         } catch (Exception e) {
             System.err.println("Error en la aplicacion: " + e.getMessage());
         } finally {
@@ -502,6 +513,63 @@ public class Compraya {
         }
         return null;
     }
+    
+    public static void mostrarHistorialPuntos(int id) {
+        String sql = "SELECT * FROM compraya.mostrar_historial_puntos(?)";  // Llamada a la función almacenada
+
+        try {
+            PreparedStatement stmt = conexion.prepareStatement(sql);
+            stmt.setInt(1, id);
+            ResultSet rs = stmt.executeQuery();
+            // Recorrer el ResultSet y mostrar los datos
+            while (rs.next()) {
+                int usuarioId = rs.getInt("usuario_id");
+                int cantidad = rs.getInt("cantidad");
+                Date fecha = rs.getDate("fecha");
+                String motivo = rs.getString("motivo");
+                int ventaId = rs.getInt("venta_id");
+
+                // Mostrar los datos
+                System.out.println("Usuario ID: " + usuarioId + ", Cantidad: " + cantidad +
+                        ", Fecha: " + fecha + ", Motivo: " + motivo + ", Venta ID: " + ventaId);
+            }
+
+        } catch (SQLException e) {
+            System.err.println("Error al obtener el historial de puntos: " + e.getMessage());
+        }
+    }
+    
+    
+public static void mostrarHistorialCompras(int clienteId) {
+        String sql = "SELECT * FROM compraya.mostrar_historial_compras(?)";  // Llamada a la función SQL
+        
+        try {
+            PreparedStatement stmt = conexion.prepareStatement(sql);
+            stmt.setInt(1, clienteId);  // Establecemos el cliente_id como parámetro
+            ResultSet rs = stmt.executeQuery();  // Ejecutamos la consulta
+
+            // Imprimir encabezados
+            System.out.println("ID | Fecha | Total Efectivo | Puntos Redimidos | Carrito ID | Factura ID");
+
+            // Imprimir los resultados
+            while (rs.next()) {
+                int id = rs.getInt("id");
+                Date fecha = rs.getDate("fecha");
+                double totalEfectivo = rs.getDouble("total_efectivo");
+                int puntosRedimidos = rs.getInt("puntos_redimidos");
+                int carritoId = rs.getInt("carrito_id");
+                int facturaId = rs.getInt("factura_id");
+
+                // Imprimir cada fila
+                System.out.printf("%d | %s | %.2f | %d | %d | %d\n", 
+                                  id, fecha, totalEfectivo, puntosRedimidos, carritoId, facturaId);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+
         
 
     public static String formatearXML(String xml) {
@@ -526,6 +594,140 @@ public class Compraya {
             return xml; // Retorna el XML sin formato si ocurre un error
         }
     }
+    
+    public static void guardarVentasJson(int idUsuario) {
+        String sql = " CALL compraya.guardar_historial_compras_json(?) ";
+        try  {
+            CallableStatement callableStatement = conexion.prepareCall(sql);
+            callableStatement.setInt(1, idUsuario);
+            callableStatement.execute();
+            
+            System.out.println("Ventas guardadas en formato JSON para el usuario con ID: " + idUsuario);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Error al guardar las ventas en JSON: " + e.getMessage());
+        }
+    }
+        
+    public static void guardarPuntosJson(int idUsuario) {
+        String sql = " CALL compraya.guardar_historial_puntos_json(?) ";
+        try  {
+            CallableStatement callableStatement = conexion.prepareCall(sql);
+            callableStatement.setInt(1, idUsuario);
+            callableStatement.execute();
+            
+            System.out.println("Puntos guardados en formato JSON para el usuario con ID: " + idUsuario);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Error al guardar los puntos en JSON: " + e.getMessage());
+        }
+    }
+    
+    
+    public static void insertarPuntosRedimidos(int cantidad, Date fechaRedencion, int usuarioId) {
+        String sql = "CALL compraya.insertar_puntos_redimidos(?, ?, ?)";
+        
+        try  {
+            CallableStatement stmt = conexion.prepareCall(sql);
+            // Establecer los parámetros
+            stmt.setInt(1, cantidad);
+            stmt.setDate(2, fechaRedencion);
+            stmt.setInt(3, usuarioId);
+            
+            // Ejecutar el procedimiento
+            stmt.executeUpdate();
+            System.out.println("Puntos redimidos insertados correctamente.");
+            
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    
+    public static void insertarPuntosGanados(int cantidad, Date fechaGanacia, String motivo, String referencia, int usuarioId) {
+        String sql = "CALL compraya.insertar_puntos_ganados(?, ?, ?, ?, ?)";
+        
+        try  {
+            CallableStatement stmt = conexion.prepareCall(sql);
+            // Establecer los parámetros
+            stmt.setInt(1, cantidad);
+            stmt.setDate(2, fechaGanacia);
+            stmt.setString(3, motivo);
+            stmt.setString(4, referencia);
+            stmt.setInt(5, usuarioId);
+            
+            // Ejecutar el procedimiento
+            stmt.executeUpdate();
+            System.out.println("Puntos ganados insertados correctamente.");
+            
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    
+    
+    public static void crearVenta(int carritoId, int productoId) {
+        // SQL para llamar al procedimiento almacenado
+        String sql = "CALL compraya.crear_venta(?, ?)";  // Llamada al procedimiento almacenado
+
+        try {
+            CallableStatement stmt = conexion.prepareCall(sql);
+            // Configurar los parámetros de entrada
+            stmt.setInt(1, carritoId);
+            stmt.setInt(2, productoId);
+
+            // Ejecutar el procedimiento almacenado
+            stmt.execute();
+
+            System.out.println("Venta creada correctamente.");
+
+        } catch (SQLException e) {
+            // Manejo de excepciones, podría ser que el carrito o producto no existan
+            System.err.println("Error al crear la venta: " + e.getMessage());
+        }
+    }
+    
+    
+    private static void mostrarJsonInforme(){
+       
+       
+            // Ejecutar la función mostrar_informes_creados()
+           
+            try  {
+                 String query = "SELECT * FROM compraya.mostrar_informes_creados();";
+                 CallableStatement stmt = conexion.prepareCall(query);
+                 ResultSet rs = stmt.executeQuery();
+                // Iterar sobre los resultados
+                while (rs.next()) {
+                    int id = rs.getInt("id");
+                    String tipo = rs.getString("tipo");
+                    Date fecha = rs.getDate("fecha");
+                    String datosJson = rs.getString("datos_json");
+
+                    // Imprimir los resultados de forma bonita
+                    System.out.println("Informe ID: " + id);
+                    System.out.println("Tipo: " + tipo);
+                    System.out.println("Fecha: " + fecha);
+                    // Formatear el JSON con la función nativa de PostgreSQL
+                    System.out.println("Datos JSON: " + formatJson(datosJson));
+                    System.out.println("---------------------------");
+                }
+            
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    
+
+    }
+    
+    
+    
+    
+       private static String formatJson(String json) {
+        // Simple formato con saltos de línea para una visualización más bonita
+        // Si prefieres una librería más robusta, puedes usar Gson o Jackson en lugar de esto
+        return json.replace(",", ",\n").replace("{", "{\n").replace("}", "\n}");
+    }
+    
     public static void initConnection() throws SQLException, ClassNotFoundException {
         Class.forName("org.postgresql.Driver");
         conexion = DriverManager.getConnection("jdbc:postgresql://localhost:5432/postgres", "postgres", "andres2003");
