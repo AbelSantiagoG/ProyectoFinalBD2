@@ -102,6 +102,14 @@ create table inventarios(
 	producto_id int references productos(id)
 );
 
+ALTER TABLE carritos 
+ADD COLUMN usuario_id int;
+
+
+ALTER TABLE carritos
+ADD CONSTRAINT fk_carritos_usuario FOREIGN KEY (usuario_id)
+REFERENCES usuarios (id);
+
 create table carritos(
 	id int primary key default nextval('carritoSecuencia'),
 	cantidad int,
@@ -918,13 +926,13 @@ BEGIN
         cliente_id, 
         carrito_id
     ) VALUES (
-        CONCAT('FAC-', nextval('facturaSecuencia')),
+        CONCAT('FAC-', nextval('compraya.facturaSecuencia')),
         CURRENT_DATE,
         subtotal,
         total,
         impuesto,
-        'pendiente',
-        (SELECT cliente_id FROM compraya.carritos WHERE id = NEW.carrito_id), 
+        'PENDIENTE',
+        (SELECT usuario_id FROM compraya.carritos WHERE id = NEW.carrito_id), 
         NEW.carrito_id
     );
 
@@ -1125,20 +1133,57 @@ $$;
 ----------------------------------- Historiales -----------------------------------
 ----Punto 13----
 
-CREATE OR REPLACE FUNCTION trigger_historial_puntos()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION compraya.trigger_historial_puntos_ganados()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
 BEGIN
-    INSERT INTO compraya.historial_puntos (usuario_id, cantidad, fecha, motivo, venta_id)
+    -- Si la tabla origen no tiene `venta_id`, omítelo
+    INSERT INTO compraya.historial_puntos (usuario_id, cantidad, fecha, motivo)
     VALUES (
         NEW.usuario_id,
         NEW.cantidad,
-        COALESCE(NEW.fecha_ganacia, NEW.fecha_redencion),
-        NEW.motivo,
-        NEW.venta_id  -- Si tienes un campo 'venta_id' relacionado con la redención de puntos
+        NEW.fecha_ganacia,  -- O `fecha_redencion` dependiendo de la tabla
+        NEW.motivo
     );
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION compraya.trigger_historial_puntos_redimidos()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    -- Si la tabla origen no tiene `venta_id`, omítelo
+    INSERT INTO compraya.historial_puntos (usuario_id, cantidad, fecha, motivo)
+    VALUES (
+        NEW.usuario_id,
+        NEW.cantidad,
+        NEW.fecha_redencion,  -- O `fecha_redencion` dependiendo de la tabla
+		''    
+);
+    RETURN NEW;
+END;
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION compraya.mostrar_historial_puntos(id_usuario_p INT)
+ RETURNS TABLE(usuario_id integer, cantidad integer, fecha date, motivo character varying, venta_id integer)
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    RETURN QUERY
+    SELECT hp.usuario_id, hp.cantidad, hp.fecha, hp.motivo, hp.venta_id
+    FROM compraya.historial_puntos hp
+	where hp.usuario_id = id_usuario_p
+    ORDER BY hp.fecha DESC;
+END;
+$function$
+;
+
 
 
 ----Punto 15----
@@ -1150,12 +1195,36 @@ BEGIN
     VALUES (
         NEW.cliente_id,
         NEW.fecha,
-        NEW.total_efectivo,  -- Debería capturar el monto real pagado en efectivo
-        NEW.puntos_redimidos,  -- Capturar los puntos redimidos durante la compra
+        0,  -- Debería capturar el monto real pagado en efectivo
+        0,  -- Capturar los puntos redimidos durante la compra
         NEW.carrito_id,
         NEW.id
     );
     RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION mostrar_historial_compras(p_cliente_id INT)
+RETURNS TABLE (
+    id INT,
+    fecha DATE,
+    total_efectivo NUMERIC,
+    puntos_redimidos INT,
+    carrito_id INT,
+    factura_id INT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        hc.id,
+        hc.fecha,
+        hc.total_efectivo,
+        hc.puntos_redimidos,
+        hc.carrito_id,
+        hc.factura_id
+    FROM compraya.historial_compras hc
+    WHERE hc.cliente_id = p_cliente_id
+    ORDER BY hc.fecha DESC;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1254,12 +1323,13 @@ EXECUTE FUNCTION generar_factura_venta();
 CREATE TRIGGER trigger_puntos_ganados
 AFTER INSERT ON compraya.puntos_ganados
 FOR EACH ROW
-EXECUTE FUNCTION trigger_historial_puntos();
+EXECUTE FUNCTION trigger_historial_puntos_ganados();
 
 CREATE TRIGGER trigger_puntos_redimidos
 AFTER INSERT ON compraya.puntos_redimidos
 FOR EACH ROW
-EXECUTE FUNCTION trigger_historial_puntos();
+EXECUTE FUNCTION trigger_historial_puntos_redimidos();
+
 
 ----Punto 15----
 
@@ -1340,6 +1410,118 @@ BEGIN
 
 END;
 $$;
+
+select * from carritos c ;
+
+update carritos set usuario_id = 2 where id = 2;
+
+
+
+
+-- informes
+CREATE OR REPLACE PROCEDURE guardar_historial_puntos_json(id_usuario_p INT)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    historial RECORD;
+    datos_json JSON;
+BEGIN
+    -- Validar si el usuario existe antes de proceder
+    IF NOT EXISTS (SELECT 1 FROM compraya.usuarios WHERE id = id_usuario_p) THEN
+        RAISE EXCEPTION 'El usuario con ID % no existe.', id_usuario_p;
+    END IF;
+
+    -- Iterar sobre los datos del historial de puntos del usuario
+    FOR historial IN 
+        SELECT usuario_id, cantidad, fecha, motivo, venta_id
+        FROM compraya.historial_puntos
+        WHERE usuario_id = id_usuario_p
+    LOOP
+        -- Crear el objeto JSON con los datos obtenidos
+        datos_json := json_build_object(
+            'usuario_id', historial.usuario_id,
+            'cantidad', historial.cantidad,
+            'fecha', historial.fecha,
+            'motivo', historial.motivo,
+            'venta_id', historial.venta_id
+        );
+
+        -- Insertar el JSON en la tabla informes
+        INSERT INTO compraya.informes (tipo, fecha, datos_json)
+        VALUES ('USUARIOS', CURRENT_DATE, datos_json);
+    END LOOP;
+
+    -- Confirmar éxito (opcional)
+    RAISE NOTICE 'Historial de puntos guardado correctamente para usuario con ID %', id_usuario_p;
+END;
+$$;
+
+
+CREATE OR REPLACE PROCEDURE guardar_historial_compras_json(id_usuario_p INT)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    compra RECORD;
+    datos_json JSON;
+BEGIN
+    -- Validar si el usuario existe antes de proceder
+    IF NOT EXISTS (SELECT 1 FROM compraya.usuarios WHERE id = id_usuario_p) THEN
+        RAISE EXCEPTION 'El usuario con ID % no existe.', id_usuario_p;
+    END IF;
+
+    -- Iterar sobre los datos del historial de compras del usuario
+    FOR compra IN 
+        SELECT cliente_id, fecha, total_efectivo, puntos_redimidos, carrito_id, factura_id
+        FROM compraya.historial_compras
+        WHERE cliente_id = id_usuario_p
+    LOOP
+        -- Crear el objeto JSON con los datos obtenidos
+        datos_json := json_build_object(
+            'cliente_id', compra.cliente_id,
+            'fecha', compra.fecha,
+            'total_efectivo', compra.total_efectivo,
+            'puntos_redimidos', compra.puntos_redimidos,
+            'carrito_id', compra.carrito_id,
+            'factura_id', compra.factura_id
+        );
+
+        -- Insertar el JSON en la tabla informes
+        INSERT INTO compraya.informes (tipo, fecha, datos_json)
+        VALUES ('INVENTARIO', CURRENT_DATE, datos_json);
+    END LOOP;
+
+    -- Confirmar éxito (opcional)
+    RAISE NOTICE 'Historial de compras guardado correctamente para usuario con ID %', id_usuario_p;
+END;
+$$;
+
+
+CALL guardar_historial_compras_json(1); -- Cambia 1 por el ID del usuario correspondiente.
+
+
+
+
+CREATE OR REPLACE FUNCTION mostrar_informes_creados()
+RETURNS TABLE(id INT, tipo tipo_informe, fecha DATE, datos_json JSONB)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        informes.id,       
+        informes.tipo,
+        informes.fecha,
+        informes.datos_json::JSONB  -- Convertir JSON a JSONB
+    FROM compraya.informes;
+END;
+$$;
+
+
+
+
+SELECT * FROM mostrar_informes_creados();
+
+
 
 
 ------------Registros para pruebitas------------
@@ -1498,4 +1680,6 @@ drop table descuentos_dia;
 
 call establecer_sesion('12345');
 
+
+call guardar_historial_puntos_json(1);
 
