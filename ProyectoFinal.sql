@@ -110,19 +110,15 @@ create table inventarios(
 );
 
 
-alter table carritos add column total_efectivo numeric default 0;
-alter table carritos add column total_antes_pago numeric default 0;
-
-
-
-create table carritos(
-	id int primary key default nextval('carritoSecuencia'),
-	cantidad int,
-	total numeric,
-	usuario_id INT REFERENCES compraya.usuarios(id) UNIQUE
+CREATE TABLE compraya.carritos (
+    id SERIAL PRIMARY KEY,               
+    cantidad INT DEFAULT 0,              
+    total NUMERIC(10, 2) DEFAULT 0,     
+    usuario_id INT NOT NULL,             
+    total_efectivo NUMERIC(10, 2) DEFAULT 0, 
+    total_antes_pago NUMERIC(10, 2) DEFAULT 0 
 );
 
-select * from ventas;
 
 create table ventas(
 	id int primary key default nextval('ventaSecuencia'),
@@ -142,9 +138,6 @@ CREATE TABLE compraya.facturas (
     cliente_id INT REFERENCES compraya.usuarios(id),
     carrito_id INT REFERENCES compraya.carritos(id)
 );
-
-ALTER TABLE compraya.facturas
-ADD COLUMN impuesto NUMERIC;
 
 
 create table puntos_redimidos(
@@ -1388,14 +1381,11 @@ BEGIN
         FROM compraya.ventas v
         JOIN compraya.productos p ON v.producto_id = p.id
         WHERE v.carrito_id = v_carrito_id
-    )
-    WHERE id = v_carrito_id;
-
-    -- Paso 6: Actualizar la cantidad total en la tabla carritos
-    UPDATE compraya.carritos
-    SET cantidad = (
-        SELECT COALESCE(SUM(v.cantidad), 0) 
+    ),
+    total_antes_pago = (
+        SELECT COALESCE(SUM(p.precio * v.cantidad), 0) 
         FROM compraya.ventas v
+        JOIN compraya.productos p ON v.producto_id = p.id
         WHERE v.carrito_id = v_carrito_id
     )
     WHERE id = v_carrito_id;
@@ -1444,15 +1434,19 @@ RETURNS TABLE (
     producto_id INT,
     nombre_producto VARCHAR,
     cantidad INT,
-    total NUMERIC
+    total_producto NUMERIC,
+    total_efectivo NUMERIC, -- Nuevo campo
+    total_antes_pago NUMERIC -- Nuevo campo
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
         v.producto_id,
         p.nombre AS nombre_producto,
-        c.cantidad,
-        c.total
+        v.cantidad,
+        p.precio * v.cantidad AS total_producto,
+        c.total_efectivo,  -- Incluir el total_efectivo
+        c.total_antes_pago  -- Incluir el total_antes_pago
     FROM 
         compraya.ventas v
     JOIN 
@@ -1463,6 +1457,25 @@ BEGIN
         v.carrito_id = p_carrito_id;
 END;
 $$ LANGUAGE plpgsql;
+
+
+----------Vaciar carrito----------
+
+CREATE OR REPLACE PROCEDURE vaciar_carrito(
+    p_carrito_id INT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    DELETE FROM compraya.ventas WHERE carrito_id = p_carrito_id;
+
+    UPDATE compraya.carritos
+    SET total = 0
+    WHERE id = p_carrito_id;
+
+    COMMIT;
+END;
+$$;
 
 
 ----------Vaciar carrito----------

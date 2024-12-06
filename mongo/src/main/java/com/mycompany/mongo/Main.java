@@ -489,10 +489,10 @@ public class Main {
 
             switch (opcion) {
                 case 1:
-                    inventario.consultarInventario();// Ver inventario de un producto
+                    inventario.consultarInventario();
                     break;
                 case 2:
-                    inventario.actualizarInventario();// Añadir inventario a un producto
+                    inventario.actualizarInventario();
                     break;
                 case 3:
                     inventario.reducirInventario();
@@ -509,7 +509,7 @@ public class Main {
     
     public static void initConnection() throws SQLException, ClassNotFoundException {
         Class.forName("org.postgresql.Driver");
-        conexion = DriverManager.getConnection("jdbc:postgresql://localhost:5432/postgres", "postgres", "andres2003");
+        conexion = DriverManager.getConnection("jdbc:postgresql://localhost:5432/postgres", "postgres", "elpepe1234");
         System.out.println("Conexion exitosa");
     }
 

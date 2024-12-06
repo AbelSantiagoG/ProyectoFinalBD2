@@ -95,18 +95,19 @@ public class Carrito {
         }
     }
     
-    public static void obtenerProductosEnCarrito() { 
-        Scanner scanner = new Scanner(System.in);  // Crear un escáner para leer entradas desde consola
+    public static void obtenerProductosEnCarrito() {
+        Scanner scanner = new Scanner(System.in); // Crear un escáner para leer entradas desde la consola
 
         // Pedir el carritoId al usuario
         System.out.print("Ingresa el ID del carrito: ");
-        int carritoId = scanner.nextInt();  // Leer el carritoId desde consola
+        int carritoId = scanner.nextInt(); // Leer el carritoId desde la consola
 
         CallableStatement stmt = null;
         ResultSet rs = null;
         try {
             // Llamada a la función en PostgreSQL
-            stmt = conexion.prepareCall("SELECT * FROM compraya.obtener_productos_en_carrito(?)");
+            String query = "SELECT * FROM compraya.obtener_productos_en_carrito(?)";
+            stmt = conexion.prepareCall(query);
 
             // Establecer el parámetro para la función
             stmt.setInt(1, carritoId);
@@ -115,14 +116,20 @@ public class Carrito {
             rs = stmt.executeQuery();
 
             // Procesar los resultados
+            System.out.println("Productos en el carrito:");
             while (rs.next()) {
                 int productoId = rs.getInt("producto_id");
                 String nombreProducto = rs.getString("nombre_producto");
                 int cantidad = rs.getInt("cantidad");
-                double totalProducto = rs.getDouble("total");
+                double totalProducto = rs.getDouble("total_producto");
+                double totalEfectivo = rs.getDouble("total_efectivo");
+                double totalAntesPago = rs.getDouble("total_antes_pago");
 
                 // Mostrar los resultados
-                System.out.println("Producto ID: " + productoId + ", Nombre: " + nombreProducto + ", Cantidad: " + cantidad + ", Total: " + totalProducto);
+                System.out.printf(
+                    "Producto ID: %d, Nombre: %s, Cantidad: %d, Total Producto: %.2f,  Total Antes de Pago: %.2f%n",
+                    productoId, nombreProducto, cantidad, totalProducto, totalAntesPago
+                );
             }
 
         } catch (SQLException e) {
@@ -131,13 +138,12 @@ public class Carrito {
             try {
                 if (rs != null) rs.close();
                 if (stmt != null) stmt.close();
-                // No es necesario cerrar la conexión aquí si la conexión se maneja globalmente
-                // if (conexion != null) conexion.close();
             } catch (SQLException e) {
-                System.err.println("Error al cerrar la conexión: " + e.getMessage());
+                System.err.println("Error al cerrar recursos: " + e.getMessage());
             }
         }
     }
+
     
      public static void vaciarCarrito() {
         Scanner scanner = new Scanner(System.in);  // Crear un escáner para leer entradas desde consola
